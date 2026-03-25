@@ -5,14 +5,17 @@ import Nav from '../components/Nav';
 
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
-  const [credits, setCredits] = useState<string | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [creditsError, setCreditsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('SC_API_KEY');
     if (savedKey) setApiKey(savedKey);
     const savedCredits = localStorage.getItem('SCRAPECREATORS_CREDITS');
-    if (savedCredits) setCredits(savedCredits);
+    if (savedCredits && Number(savedCredits) >= 0) {
+      setCredits(Number(savedCredits));
+    }
   }, []);
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,14 +26,28 @@ export default function SettingsPage() {
 
   const handleCheckCredits = async () => {
     setLoading(true);
+    setCreditsError(null);
     try {
-      const res = await fetch('/api/credits');
+      const res = await fetch('/api/credits', {
+        headers: { 'x-api-key': apiKey },
+      });
       const data = await res.json();
-      const remaining = String(data.credits_remaining);
+
+      if (!res.ok || data.error) {
+        setCreditsError(data.error || `Request failed (${res.status})`);
+        setCredits(null);
+        localStorage.removeItem('SCRAPECREATORS_CREDITS');
+        return;
+      }
+
+      const remaining = Number(data.credits_remaining);
       setCredits(remaining);
-      localStorage.setItem('SCRAPECREATORS_CREDITS', remaining);
+      setCreditsError(null);
+      localStorage.setItem('SCRAPECREATORS_CREDITS', String(remaining));
     } catch {
-      // ignore
+      setCreditsError('Network error — could not reach server');
+      setCredits(null);
+      localStorage.removeItem('SCRAPECREATORS_CREDITS');
     } finally {
       setLoading(false);
     }
@@ -138,25 +155,61 @@ export default function SettingsPage() {
         <div style={{ marginTop: 32 }}>
           <div style={sectionLabel}>CREDIT BALANCE</div>
           <div style={card}>
-            <div
-              style={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: 48,
-                fontWeight: 700,
-                color: 'var(--accent)',
-              }}
-            >
-              {credits ?? '\u2014'}
-            </div>
-            <div
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                color: 'var(--text-2)',
-              }}
-            >
-              credits remaining
-            </div>
+            {loading ? (
+              <div
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 16,
+                  color: 'var(--text-3)',
+                }}
+              >
+                Checking...
+              </div>
+            ) : creditsError ? (
+              <>
+                <div
+                  style={{
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: 16,
+                    color: 'var(--danger)',
+                  }}
+                >
+                  Could not fetch — check API key
+                </div>
+                <div
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 12,
+                    color: 'var(--text-3)',
+                    marginTop: 8,
+                  }}
+                >
+                  {creditsError}
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: 48,
+                    fontWeight: 700,
+                    color: 'var(--accent)',
+                  }}
+                >
+                  {credits !== null ? credits : '\u2014'}
+                </div>
+                <div
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 14,
+                    color: 'var(--text-2)',
+                  }}
+                >
+                  credits remaining
+                </div>
+              </>
+            )}
           </div>
         </div>
 

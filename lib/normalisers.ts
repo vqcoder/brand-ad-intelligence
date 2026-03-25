@@ -103,9 +103,10 @@ export function normaliseTikTokVideo(raw: Record<string, unknown>): CreativeReco
   const v = raw as RawData
   const desc = (v.desc || v.description || v.title || null) as string | null
   const createTime = v.createTime || v.create_time
-  const firstShown = createTime
-    ? new Date(createTime * 1000).toISOString()
-    : v.created_at || null
+  let firstShown: string | null = v.created_at || null
+  if (createTime && typeof createTime === 'number' && isFinite(createTime)) {
+    firstShown = new Date(createTime * 1000).toISOString()
+  }
 
   return {
     platform: 'tiktok',

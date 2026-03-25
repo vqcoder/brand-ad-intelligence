@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "lint:strict": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "validate": "npm run typecheck && npm run lint:strict && npm run test:ci"
+    "validate": "npm run typecheck && npm run lint:strict && npm run test:ci",
+    "smoke": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/smoke-test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.0",
