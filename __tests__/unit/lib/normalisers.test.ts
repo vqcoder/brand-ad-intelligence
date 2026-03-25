@@ -2,6 +2,7 @@ import {
   normaliseMetaAd,
   normaliseGoogleAd,
   normaliseTikTokVideo,
+  normaliseYouTubeVideo,
 } from '@/lib/normalisers'
 
 const META_RAW = {
@@ -134,6 +135,87 @@ describe('normaliseGoogleAd', () => {
     expect(normaliseGoogleAd(GOOGLE_RAW).ad_library_url).toBe(
       'https://adstransparency.google.com/advertiser/AR01614014350098432001/creative/CR07443539616616939521'
     )
+  })
+})
+
+const YOUTUBE_RAW = {
+  videoId: 'dQw4w9WgXcQ',
+  title: 'Brand Campaign 2025',
+  description: 'Official brand video #campaign #fitness',
+  thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+  videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  channelName: 'Test Brand',
+  channelId: 'UC1234567890',
+  publishedAt: '2025-02-15T10:00:00.000Z',
+  viewCount: 5400000,
+  likeCount: 120000,
+  commentCount: 8500,
+  duration: 180,
+}
+
+describe('normaliseYouTubeVideo', () => {
+  it('sets platform to youtube', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).platform).toBe('youtube')
+  })
+
+  it('sets platform_ad_id from videoId', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).platform_ad_id).toBe('dQw4w9WgXcQ')
+  })
+
+  it('extracts title', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).title).toBe('Brand Campaign 2025')
+  })
+
+  it('extracts thumbnail', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).thumbnail_url).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
+  })
+
+  it('extracts video_url', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).video_url).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+  })
+
+  it('maps view_count and like_count', () => {
+    const r = normaliseYouTubeVideo(YOUTUBE_RAW)
+    expect(r.view_count).toBe(5400000)
+    expect(r.like_count).toBe(120000)
+  })
+
+  it('maps comment_count', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).comment_count).toBe(8500)
+  })
+
+  it('extracts channel info', () => {
+    const r = normaliseYouTubeVideo(YOUTUBE_RAW)
+    expect(r.page_name).toBe('Test Brand')
+    expect(r.advertiser_id).toBe('UC1234567890')
+  })
+
+  it('extracts first_shown from publishedAt', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).first_shown).toBe('2025-02-15T10:00:00.000Z')
+  })
+
+  it('extracts duration', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).duration_seconds).toBe(180)
+  })
+
+  it('extracts hashtags from description', () => {
+    const r = normaliseYouTubeVideo(YOUTUBE_RAW)
+    expect(r.hashtags).toContain('campaign')
+    expect(r.hashtags).toContain('fitness')
+  })
+
+  it('truncates long descriptions to 500 chars', () => {
+    const long = { ...YOUTUBE_RAW, description: 'x'.repeat(600) }
+    const r = normaliseYouTubeVideo(long)
+    expect(r.body_text!.length).toBe(503) // 500 + '...'
+  })
+
+  it('auto_synced is false', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).auto_synced).toBe(false)
+  })
+
+  it('preserves raw_data', () => {
+    expect(normaliseYouTubeVideo(YOUTUBE_RAW).raw_data).toEqual(YOUTUBE_RAW)
   })
 })
 
