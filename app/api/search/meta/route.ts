@@ -10,8 +10,11 @@ async function sc(url: string, apiKey: string) {
   return { res, body }
 }
 
-function extractAds(data: Record<string, unknown>) {
-  const ads = data?.ads || data?.data || data?.results || data?.searchResults || (Array.isArray(data) ? data : [])
+function extractAds(data: Record<string, unknown>, label: string) {
+  console.error(`[search/meta] ${label} keys:`, Object.keys(data))
+  console.error(`[search/meta] ${label} ads count:`, Array.isArray(data?.ads) ? data.ads.length : 'key missing')
+  // Prefer body.ads (SC's canonical key); only fall back if the key is absent
+  const ads = ('ads' in data ? data.ads : null) ?? data?.data ?? data?.results ?? data?.searchResults ?? (Array.isArray(data) ? data : [])
   return Array.isArray(ads) ? ads : []
 }
 
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
       const { res: aRes, body: aData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/company/ads?pageId=${pageId}&country=US`, apiKey)
       cr = aData.credits_remaining ?? cr
       if (!aRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${aRes.status}: ${JSON.stringify(aData).slice(0, 200)}` }, { status: 502 })
-      rawAds = extractAds(aData)
+      rawAds = extractAds(aData, 'company ads')
     }
 
     if (rawAds.length === 0) {
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
       const { res: fRes, body: fData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/search/ads?query=${encodeURIComponent(query)}&status=ALL&ad_type=all&country=US`, apiKey)
       cr = fData.credits_remaining ?? cr
       if (!fRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${fRes.status}: ${JSON.stringify(fData).slice(0, 200)}` }, { status: 502 })
-      rawAds = extractAds(fData)
+      rawAds = extractAds(fData, 'keyword fallback')
     }
 
     const results = rawAds.map((ad) => {

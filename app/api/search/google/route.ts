@@ -10,8 +10,10 @@ async function sc(url: string, apiKey: string) {
   return { res, body }
 }
 
-function extractAds(data: Record<string, unknown>) {
-  const ads = data?.ads || data?.data || data?.results || (Array.isArray(data) ? data : [])
+function extractAds(data: Record<string, unknown>, label: string) {
+  console.error(`[search/google] ${label} keys:`, Object.keys(data))
+  console.error(`[search/google] ${label} ads count:`, Array.isArray(data?.ads) ? data.ads.length : 'key missing')
+  const ads = ('ads' in data ? data.ads : null) ?? data?.data ?? data?.results ?? (Array.isArray(data) ? data : [])
   return Array.isArray(ads) ? ads : []
 }
 
@@ -38,8 +40,16 @@ export async function POST(request: Request) {
     cr = sData.credits_remaining ?? null
     if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
 
-    const first = sData?.advertisers?.[0] || sData?.data?.[0] || sData?.results?.[0] || sData?.[0]
-    const advId = first?.advertiser_id || first?.advertiserId || first?.id || null
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const advertisers: any[] = sData?.advertisers ?? sData?.data ?? sData?.results ?? []
+    const ql = query.toLowerCase()
+    const best =
+      advertisers.find((a: any) => a.region === 'US' && a.name?.toLowerCase().includes(ql)) ??
+      advertisers.find((a: any) => a.region === 'US') ??
+      advertisers.find((a: any) => a.name?.toLowerCase().includes(ql)) ??
+      advertisers[0]
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    const advId = best?.advertiser_id || best?.advertiserId || best?.id || null
     let rawAds: Record<string, unknown>[] = []
 
     if (advId) {
@@ -47,14 +57,14 @@ export async function POST(request: Request) {
       const { res: aRes, body: aData } = await sc(`https://api.scrapecreators.com/v1/google/company/ads?advertiser_id=${advId}&region=US`, apiKey)
       cr = aData.credits_remaining ?? cr
       if (!aRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${aRes.status}: ${JSON.stringify(aData).slice(0, 200)}` }, { status: 502 })
-      rawAds = extractAds(aData)
+      rawAds = extractAds(aData, 'company ads')
     } else {
       fallback = true
       const domain = query.toLowerCase().replace(/\s+/g, '') + '.com'
       const { res: fRes, body: fData } = await sc(`https://api.scrapecreators.com/v1/google/company/ads?domain=${encodeURIComponent(domain)}&region=US`, apiKey)
       cr = fData.credits_remaining ?? cr
       if (!fRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${fRes.status}: ${JSON.stringify(fData).slice(0, 200)}` }, { status: 502 })
-      rawAds = extractAds(fData)
+      rawAds = extractAds(fData, 'domain fallback')
     }
 
     const results = rawAds.map((ad) => {

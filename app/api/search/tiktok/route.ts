@@ -37,23 +37,28 @@ export async function POST(request: Request) {
       cr = pData.credits_remaining ?? cr
       if (!pRes.ok) { lookup = 'error'; continue }
 
-      const user = pData?.userInfo?.user || pData?.user
+      // SC returns profile under body.user (not body.userInfo)
+      const user = pData?.user || pData?.userInfo?.user
       if (!user) continue
       lookup = 'found'
+      const resolvedHandle = user.uniqueId || handle
 
-      const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(handle)}`, apiKey)
+      const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(resolvedHandle)}`, apiKey)
       cr = vData.credits_remaining ?? cr
       if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
 
-      const vids = vData?.videos || vData?.data || vData?.results || vData?.itemList || (Array.isArray(vData) ? vData : [])
+      console.error('[search/tiktok] videos keys:', Object.keys(vData))
+      console.error('[search/tiktok] videos count:', Array.isArray(vData?.itemList) ? vData.itemList.length : 'key missing')
+      // SC returns TikTok videos under body.itemList
+      const vids = ('itemList' in vData ? vData.itemList : null) ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
       const rawAds: Record<string, unknown>[] = Array.isArray(vids) ? vids : []
       if (rawAds.length === 0) continue
 
-      const nickname = user?.nickname || handle
+      const nickname = user?.nickname || resolvedHandle
       const results = rawAds.map((v) => {
         const r = normaliseTikTokVideo(v)
         if (!r.page_name) r.page_name = nickname
-        if (!r.author_handle) r.author_handle = handle
+        if (!r.author_handle) r.author_handle = resolvedHandle
         return r
       })
 
