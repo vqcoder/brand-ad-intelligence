@@ -1,78 +1,68 @@
+import { NextResponse } from 'next/server'
 import { normaliseTikTokVideo } from '@/lib/normalisers'
 
+async function sc(url: string, apiKey: string) {
+  console.error('[search/tiktok] fetching:', url)
+  const res = await fetch(url, { headers: { 'x-api-key': apiKey } })
+  const body = await res.json()
+  console.error('[search/tiktok] status:', res.status, 'keys:', Object.keys(body))
+  console.error('[search/tiktok] credits_remaining:', body.credits_remaining)
+  return { res, body }
+}
+
 export async function POST(request: Request) {
-  const body = await request.json()
-  const { query } = body
+  const reqBody = await request.json()
+  const { query } = reqBody
 
   if (!query || typeof query !== 'string' || query.trim() === '') {
     return Response.json({ error: 'query is required and must be a non-empty string' }, { status: 400 })
   }
 
-  const apiKey = request.headers.get('x-api-key') || process.env.SCRAPECREATORS_API_KEY || ''
-
-  console.error(`[search/tiktok] called with query: "${query}"`)
-  console.error(`[search/tiktok] SC key present: ${!!apiKey}, key prefix: ${apiKey ? apiKey.slice(0, 8) + '...' : 'NONE'}`)
-
+  const apiKey = process.env.SCRAPECREATORS_API_KEY
   if (!apiKey) {
-    return Response.json({ error: 'SCRAPECREATORS_API_KEY not configured', results: [] }, { status: 500 })
+    console.error('[search/tiktok] SCRAPECREATORS_API_KEY not set')
+    return NextResponse.json({ error: 'API key not configured', results: [], credits_used: 0 }, { status: 500 })
   }
 
-  // Try the handle as-is, then lowercase/no-spaces variation
-  const handles = [
-    query.trim(),
-    query.trim().toLowerCase().replace(/\s+/g, ''),
-  ]
-  // Deduplicate
-  const uniqueHandles = [...new Set(handles)]
+  let lookup: 'found' | 'not_found' | 'error' = 'not_found'
+  let fallback = false
+  let cr: number | null = null
+  const handles = [...new Set([query.trim(), query.trim().toLowerCase().replace(/\s+/g, '')])]
 
-  for (const handle of uniqueHandles) {
+  for (let i = 0; i < handles.length; i++) {
+    const handle = handles[i]
+    if (i > 0) fallback = true
     try {
-      console.error(`[search/tiktok] trying handle: "${handle}"`)
+      const { res: pRes, body: pData } = await sc(`https://api.scrapecreators.com/v1/tiktok/profile?handle=${encodeURIComponent(handle)}`, apiKey)
+      cr = pData.credits_remaining ?? cr
+      if (!pRes.ok) { lookup = 'error'; continue }
 
-      // Step 1: Get profile
-      const profileUrl = `https://api.scrapecreators.com/v1/tiktok/profile?handle=${encodeURIComponent(handle)}`
-      console.error(`[search/tiktok] profile URL: ${profileUrl}`)
-      const profileRes = await fetch(profileUrl, { headers: { 'x-api-key': apiKey } })
-      const profileData = await profileRes.json()
-      console.error(`[search/tiktok] profile status: ${profileRes.status}`)
-      console.error(`[search/tiktok] profile body: ${JSON.stringify(profileData).slice(0, 500)}`)
+      const user = pData?.userInfo?.user || pData?.user
+      if (!user) continue
+      lookup = 'found'
 
-      // Step 2: Get videos
-      const videosUrl = `https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(handle)}`
-      console.error(`[search/tiktok] videos URL: ${videosUrl}`)
-      const videosRes = await fetch(videosUrl, { headers: { 'x-api-key': apiKey } })
-      const videosData = await videosRes.json()
-      console.error(`[search/tiktok] videos status: ${videosRes.status}`)
-      console.error(`[search/tiktok] videos body: ${JSON.stringify(videosData).slice(0, 500)}`)
+      const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(handle)}`, apiKey)
+      cr = vData.credits_remaining ?? cr
+      if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
 
-      // Try multiple paths to extract videos
-      const videos = videosData?.videos || videosData?.data || videosData?.results || videosData?.itemList ||
-        (Array.isArray(videosData) ? videosData : [])
-      const videoList = Array.isArray(videos) ? videos : []
+      const vids = vData?.videos || vData?.data || vData?.results || vData?.itemList || (Array.isArray(vData) ? vData : [])
+      const rawAds: Record<string, unknown>[] = Array.isArray(vids) ? vids : []
+      if (rawAds.length === 0) continue
 
-      console.error(`[search/tiktok] extracted ${videoList.length} videos for handle "${handle}" (tried keys: videos, data, results, itemList)`)
+      const nickname = user?.nickname || handle
+      const results = rawAds.map((v) => {
+        const r = normaliseTikTokVideo(v)
+        if (!r.page_name) r.page_name = nickname
+        if (!r.author_handle) r.author_handle = handle
+        return r
+      })
 
-      if (videoList.length > 0) {
-        const results = (videoList as Record<string, unknown>[]).map((v) => {
-          const result = normaliseTikTokVideo(v)
-          if (!result.page_name) {
-            result.page_name = profileData?.userInfo?.user?.nickname || profileData?.data?.nickname || handle
-          }
-          if (!result.author_handle) {
-            result.author_handle = handle
-          }
-          return result
-        })
-
-        return Response.json({ results, credits_used: 2 })
-      }
+      return NextResponse.json({ results, credits_used: 2, debug: { query, key_present: true, company_lookup: lookup, fallback_used: fallback, raw_count: rawAds.length, sc_credits_remaining: cr } })
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`[search/tiktok] ERROR for handle "${handle}": ${message}`)
-      // Continue to next handle variation
+      console.error(`[search/tiktok] ERROR for "${handle}":`, error instanceof Error ? error.message : error)
+      lookup = 'error'
     }
   }
 
-  console.error(`[search/tiktok] no results from any handle variation`)
-  return Response.json({ results: [], credits_used: 1 })
+  return NextResponse.json({ results: [], credits_used: 1, debug: { query, key_present: true, company_lookup: lookup, fallback_used: fallback, raw_count: 0, sc_credits_remaining: cr } })
 }

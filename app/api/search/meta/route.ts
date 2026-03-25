@@ -1,77 +1,74 @@
+import { NextResponse } from 'next/server'
 import { normaliseMetaAd } from '@/lib/normalisers'
 
+async function sc(url: string, apiKey: string) {
+  console.error('[search/meta] fetching:', url)
+  const res = await fetch(url, { headers: { 'x-api-key': apiKey } })
+  const body = await res.json()
+  console.error('[search/meta] status:', res.status, 'keys:', Object.keys(body))
+  console.error('[search/meta] credits_remaining:', body.credits_remaining)
+  return { res, body }
+}
+
+function extractAds(data: Record<string, unknown>) {
+  const ads = data?.ads || data?.data || data?.results || data?.searchResults || (Array.isArray(data) ? data : [])
+  return Array.isArray(ads) ? ads : []
+}
+
 export async function POST(request: Request) {
-  const body = await request.json()
-  const { query } = body
+  const reqBody = await request.json()
+  const { query } = reqBody
 
   if (!query || typeof query !== 'string' || query.trim() === '') {
     return Response.json({ error: 'query is required and must be a non-empty string' }, { status: 400 })
   }
 
-  const apiKey = request.headers.get('x-api-key') || process.env.SCRAPECREATORS_API_KEY || ''
-
-  console.error(`[search/meta] called with query: "${query}"`)
-  console.error(`[search/meta] SC key present: ${!!apiKey}, key prefix: ${apiKey ? apiKey.slice(0, 8) + '...' : 'NONE'}`)
-
+  const apiKey = process.env.SCRAPECREATORS_API_KEY
   if (!apiKey) {
-    return Response.json({ error: 'SCRAPECREATORS_API_KEY not configured', results: [] }, { status: 500 })
+    console.error('[search/meta] SCRAPECREATORS_API_KEY not set')
+    return NextResponse.json({ error: 'API key not configured', results: [], credits_used: 0 }, { status: 500 })
   }
 
+  let lookup: 'found' | 'not_found' | 'error' = 'not_found'
+  let fallback = false
+  let cr: number | null = null
+
   try {
-    // Step 1: Search for company
-    const searchUrl = `https://api.scrapecreators.com/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`
-    console.error(`[search/meta] company search URL: ${searchUrl}`)
-    const searchRes = await fetch(searchUrl, { headers: { 'x-api-key': apiKey } })
-    const searchData = await searchRes.json()
-    console.error(`[search/meta] company search status: ${searchRes.status}`)
-    console.error(`[search/meta] company search body: ${JSON.stringify(searchData).slice(0, 500)}`)
+    const { res: sRes, body: sData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`, apiKey)
+    cr = sData.credits_remaining ?? null
+    if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
 
-    // Try multiple paths to find the page_id from SC response
-    const firstResult = searchData?.searchResults?.[0] || searchData?.data?.[0] || searchData?.[0]
-    const pageId = firstResult?.page_id || firstResult?.pageId || firstResult?.id || null
-
-    console.error(`[search/meta] resolved pageId: ${pageId}`)
-
-    let adsData: Record<string, unknown>
+    const first = sData?.searchResults?.[0] || sData?.data?.[0] || sData?.[0]
+    const pageId = first?.page_id || first?.pageId || first?.id || null
+    let rawAds: Record<string, unknown>[] = []
 
     if (pageId) {
-      // Step 2a: Get ads by page ID
-      const adsUrl = `https://api.scrapecreators.com/v1/facebook/adLibrary/company/ads?pageId=${pageId}`
-      console.error(`[search/meta] fetching ads by pageId: ${adsUrl}`)
-      const adsRes = await fetch(adsUrl, { headers: { 'x-api-key': apiKey } })
-      adsData = await adsRes.json()
-      console.error(`[search/meta] ads by pageId status: ${adsRes.status}, body preview: ${JSON.stringify(adsData).slice(0, 300)}`)
-    } else {
-      // Step 2b: Fallback — search ads by keyword with expanded params
-      const fallbackUrl = `https://api.scrapecreators.com/v1/facebook/adLibrary/search/ads?query=${encodeURIComponent(query)}&status=ALL&ad_type=all&country=US`
-      console.error(`[search/meta] no pageId found, falling back to keyword search: ${fallbackUrl}`)
-      const adsRes = await fetch(fallbackUrl, { headers: { 'x-api-key': apiKey } })
-      adsData = await adsRes.json()
-      console.error(`[search/meta] keyword search status: ${adsRes.status}, body preview: ${JSON.stringify(adsData).slice(0, 300)}`)
+      lookup = 'found'
+      const { res: aRes, body: aData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/company/ads?pageId=${pageId}&country=US`, apiKey)
+      cr = aData.credits_remaining ?? cr
+      if (!aRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${aRes.status}: ${JSON.stringify(aData).slice(0, 200)}` }, { status: 502 })
+      rawAds = extractAds(aData)
     }
 
-    // Try multiple paths to extract the ads array from SC response
-    const ads = adsData?.ads || adsData?.data || adsData?.results || adsData?.searchResults ||
-      (Array.isArray(adsData) ? adsData : [])
-    const adsList = Array.isArray(ads) ? ads : []
+    if (rawAds.length === 0) {
+      fallback = !pageId ? true : (fallback = true)
+      const { res: fRes, body: fData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/search/ads?query=${encodeURIComponent(query)}&status=ALL&ad_type=all&country=US`, apiKey)
+      cr = fData.credits_remaining ?? cr
+      if (!fRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${fRes.status}: ${JSON.stringify(fData).slice(0, 200)}` }, { status: 502 })
+      rawAds = extractAds(fData)
+    }
 
-    console.error(`[search/meta] extracted ${adsList.length} ads (tried keys: ads, data, results, searchResults)`)
-
-    const results = (adsList as Record<string, unknown>[]).map((ad) => {
-      const result = normaliseMetaAd(ad)
-      if (pageId && !result.advertiser_id) {
-        result.advertiser_id = String(pageId)
-      }
-      if (!result.page_name) {
-        result.page_name = query
-      }
-      return result
+    const results = rawAds.map((ad) => {
+      const r = normaliseMetaAd(ad as Record<string, unknown>)
+      if (pageId && !r.advertiser_id) r.advertiser_id = String(pageId)
+      if (!r.page_name) r.page_name = query
+      return r
     })
 
-    return Response.json({ results, credits_used: 2 })
+    return NextResponse.json({ results, credits_used: 2, debug: { query, key_present: true, company_lookup: lookup, fallback_used: fallback, raw_count: rawAds.length, sc_credits_remaining: cr } })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error(`[search/meta] ERROR: ${message}`)
-    return Response.json({ error: message, results: [], credits_used: 0 }, { status: 500 })
+    const msg = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[search/meta] ERROR: ${msg}`)
+    return NextResponse.json({ results: [], credits_used: 0, error: msg, debug: { query, key_present: true, company_lookup: lookup, fallback_used: fallback, raw_count: 0, sc_credits_remaining: cr } }, { status: 500 })
   }
 }
