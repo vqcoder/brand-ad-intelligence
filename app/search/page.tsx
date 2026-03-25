@@ -244,8 +244,12 @@ function SearchContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const q = searchParams.get('q') || ''
+  const metaUrl = searchParams.get('meta_url') || ''
+  const youtubeUrl = searchParams.get('youtube_url') || ''
+  const tiktokUrl = searchParams.get('tiktok_url') || ''
   const domain = searchParams.get('domain') || ''
   const context = searchParams.get('context') || ''
+  const enabledPlatforms = new Set((searchParams.get('platforms') || 'meta,google,tiktok,youtube').split(',').filter(Boolean))
 
   const [metaStatus, setMetaStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
   const [googleStatus, setGoogleStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
@@ -274,13 +278,14 @@ function SearchContent() {
     const fetchPlatform = async (
       platform: 'meta' | 'google' | 'tiktok' | 'youtube',
       setter: React.Dispatch<React.SetStateAction<PlatformStatus>>,
+      extra: Record<string, string | undefined>,
     ) => {
       setter({ status: 'loading', results: [], count: 0 })
       try {
         const res = await fetch(`/api/search/${platform}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, domain: domain || undefined, context: context || undefined }),
+          body: JSON.stringify({ query: q, context: context || undefined, ...extra }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
@@ -291,11 +296,12 @@ function SearchContent() {
       }
     }
 
-    fetchPlatform('meta', setMetaStatus)
-    fetchPlatform('google', setGoogleStatus)
-    fetchPlatform('tiktok', setTiktokStatus)
-    fetchPlatform('youtube', setYoutubeStatus)
-  }, [q, domain, context])
+    if (enabledPlatforms.has('meta')) fetchPlatform('meta', setMetaStatus, { meta_url: metaUrl || undefined })
+    if (enabledPlatforms.has('google')) fetchPlatform('google', setGoogleStatus, { domain: domain || undefined })
+    if (enabledPlatforms.has('tiktok')) fetchPlatform('tiktok', setTiktokStatus, { tiktok_url: tiktokUrl || undefined })
+    if (enabledPlatforms.has('youtube')) fetchPlatform('youtube', setYoutubeStatus, { youtube_url: youtubeUrl || undefined })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, metaUrl, youtubeUrl, tiktokUrl, domain, context])
 
   // Merged + filtered + sorted creatives
   const allCreatives: CreativeRecord[] = [...metaStatus.results, ...googleStatus.results, ...tiktokStatus.results, ...youtubeStatus.results]
@@ -357,20 +363,22 @@ function SearchContent() {
     return ''
   }
 
-  const platformTabs: { key: 'all' | 'meta' | 'google' | 'tiktok' | 'youtube'; label: string }[] = [
+  const allPlatformTabs: { key: 'all' | 'meta' | 'google' | 'tiktok' | 'youtube'; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'meta', label: 'Meta' },
     { key: 'google', label: 'Google' },
     { key: 'tiktok', label: 'TikTok' },
     { key: 'youtube', label: 'YouTube' },
   ]
+  const platformTabs = allPlatformTabs.filter((t) => t.key === 'all' || enabledPlatforms.has(t.key))
 
-  const platformStatuses: { name: string; ps: PlatformStatus }[] = [
-    { name: 'Meta', ps: metaStatus },
-    { name: 'Google', ps: googleStatus },
-    { name: 'TikTok', ps: tiktokStatus },
-    { name: 'YouTube', ps: youtubeStatus },
+  const allPlatformStatuses: { key: string; name: string; ps: PlatformStatus }[] = [
+    { key: 'meta', name: 'Meta', ps: metaStatus },
+    { key: 'google', name: 'Google', ps: googleStatus },
+    { key: 'tiktok', name: 'TikTok', ps: tiktokStatus },
+    { key: 'youtube', name: 'YouTube', ps: youtubeStatus },
   ]
+  const platformStatuses = allPlatformStatuses.filter((p) => enabledPlatforms.has(p.key))
 
   return (
     <div style={{ background: V.bg, minHeight: '100vh', fontFamily: FONT_BODY }}>

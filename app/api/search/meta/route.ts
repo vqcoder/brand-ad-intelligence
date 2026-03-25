@@ -21,11 +21,21 @@ function extractAds(data: Record<string, unknown>, label: string) {
 
 export async function POST(request: Request) {
   const reqBody = await request.json()
-  const { query } = reqBody
+  const { query, meta_url } = reqBody
 
   if (!query || typeof query !== 'string' || query.trim() === '') {
     return Response.json({ error: 'query is required and must be a non-empty string' }, { status: 400 })
   }
+
+  // Extract handle from Meta/Instagram URL if provided
+  let metaHandle: string | null = null
+  if (meta_url && typeof meta_url === 'string') {
+    try {
+      metaHandle = new URL(meta_url).pathname.replace(/\//g, '').trim() || null
+      console.error('[meta] extracted handle from URL:', metaHandle)
+    } catch { /* invalid URL, ignore */ }
+  }
+  const searchQuery = metaHandle ?? query
 
   const apiKey = process.env.SCRAPECREATORS_API_KEY
   if (!apiKey) {
@@ -38,7 +48,7 @@ export async function POST(request: Request) {
   let cr: number | null = null
 
   try {
-    const { res: sRes, body: sData } = await sc(`${SC_BASE_URL}/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`, apiKey)
+    const { res: sRes, body: sData } = await sc(`${SC_BASE_URL}/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(searchQuery)}`, apiKey)
     cr = sData.credits_remaining ?? null
     if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
 

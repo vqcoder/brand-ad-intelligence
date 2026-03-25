@@ -24,10 +24,19 @@ async function sc(url: string, apiKey: string) {
 
 export async function POST(request: Request) {
   const reqBody = await request.json()
-  const { query } = reqBody
+  const { query, tiktok_url } = reqBody
 
   if (!query || typeof query !== 'string' || query.trim() === '') {
     return Response.json({ error: 'query is required and must be a non-empty string' }, { status: 400 })
+  }
+
+  // Extract handle from TikTok URL if provided
+  let urlHandle: string | null = null
+  if (tiktok_url && typeof tiktok_url === 'string') {
+    try {
+      urlHandle = new URL(tiktok_url).pathname.replace(/^\/@?/, '').replace(/\//g, '').trim() || null
+      console.error('[tiktok] extracted handle from URL:', urlHandle)
+    } catch { /* invalid URL, ignore */ }
   }
 
   const apiKey = process.env.SCRAPECREATORS_API_KEY
@@ -43,66 +52,69 @@ export async function POST(request: Request) {
   let source = ''
 
   try {
-    // STEP 1 — TikTok Ad Library search by advertiser name
-    const adResult = await sc(
-      `${SC_BASE_URL}/v1/tiktok/ads/search?query=${encodeURIComponent(query)}&region=US`,
-      apiKey,
-    )
-    if (adResult.parseError) {
-      return NextResponse.json({ results: [], credits_used: 0, error: 'SC returned non-JSON', debug: { stage: 'ad_library', status: adResult.res.status, preview: adResult.preview } }, { status: 200 })
-    }
-    const { res: adRes, body: adData } = adResult
-    cr = adData.credits_remaining ?? cr
-
-    if (adRes.ok) {
-      console.error('[tiktok] ad library keys:', JSON.stringify(Object.keys(adData)))
-      const adItems = adData?.ads ?? adData?.data ?? adData?.results ?? adData?.itemList ?? adData?.items ?? (Array.isArray(adData) ? adData : [])
-      rawAds = Array.isArray(adItems) ? adItems : []
-      console.error('[tiktok] ad library count:', rawAds.length)
-      if (rawAds.length > 0) console.error('[tiktok] ad library first item keys:', Object.keys(rawAds[0]))
-    } else {
-      console.error('[tiktok] ad library endpoint status:', adRes.status)
-    }
-
-    if (rawAds.length > 0) {
-      lookup = 'found'
-      source = 'ad_library'
-    }
-
-    // STEP 2 — Keyword search fallback
-    if (rawAds.length === 0) {
-      fallback = true
-      console.error('[tiktok] falling back to keyword search')
-      const kwResult = await sc(
-        `${SC_BASE_URL}/v1/tiktok/search/keyword?keyword=${encodeURIComponent(query)}`,
+    // When a TikTok URL is provided, skip ad library + keyword search and go straight to profile/videos
+    if (!urlHandle) {
+      // STEP 1 — TikTok Ad Library search by advertiser name
+      const adResult = await sc(
+        `${SC_BASE_URL}/v1/tiktok/ads/search?query=${encodeURIComponent(query)}&region=US`,
         apiKey,
       )
-      if (kwResult.parseError) {
-        return NextResponse.json({ results: [], credits_used: 0, error: 'SC returned non-JSON', debug: { stage: 'keyword_search', status: kwResult.res.status, preview: kwResult.preview } }, { status: 200 })
+      if (adResult.parseError) {
+        return NextResponse.json({ results: [], credits_used: 0, error: 'SC returned non-JSON', debug: { stage: 'ad_library', status: adResult.res.status, preview: adResult.preview } }, { status: 200 })
       }
-      const { res: kwRes, body: kwData } = kwResult
-      cr = kwData.credits_remaining ?? cr
+      const { res: adRes, body: adData } = adResult
+      cr = adData.credits_remaining ?? cr
 
-      if (kwRes.ok) {
-        console.error('[tiktok] keyword search keys:', JSON.stringify(Object.keys(kwData)))
-        const kwItems = kwData?.ads ?? kwData?.data ?? kwData?.results ?? kwData?.itemList ?? kwData?.items ?? (Array.isArray(kwData) ? kwData : [])
-        rawAds = Array.isArray(kwItems) ? kwItems : []
-        console.error('[tiktok] keyword search count:', rawAds.length)
-        if (rawAds.length > 0) console.error('[tiktok] keyword search first item keys:', Object.keys(rawAds[0]))
+      if (adRes.ok) {
+        console.error('[tiktok] ad library keys:', JSON.stringify(Object.keys(adData)))
+        const adItems = adData?.ads ?? adData?.data ?? adData?.results ?? adData?.itemList ?? adData?.items ?? (Array.isArray(adData) ? adData : [])
+        rawAds = Array.isArray(adItems) ? adItems : []
+        console.error('[tiktok] ad library count:', rawAds.length)
+        if (rawAds.length > 0) console.error('[tiktok] ad library first item keys:', Object.keys(rawAds[0]))
       } else {
-        console.error('[tiktok] keyword search endpoint status:', kwRes.status)
+        console.error('[tiktok] ad library endpoint status:', adRes.status)
       }
 
       if (rawAds.length > 0) {
         lookup = 'found'
-        source = 'keyword_search'
+        source = 'ad_library'
       }
-    }
 
-    // STEP 3 — Profile + videos as last resort
+      // STEP 2 — Keyword search fallback
+      if (rawAds.length === 0) {
+        fallback = true
+        console.error('[tiktok] falling back to keyword search')
+        const kwResult = await sc(
+          `${SC_BASE_URL}/v1/tiktok/search/keyword?keyword=${encodeURIComponent(query)}`,
+          apiKey,
+        )
+        if (kwResult.parseError) {
+          return NextResponse.json({ results: [], credits_used: 0, error: 'SC returned non-JSON', debug: { stage: 'keyword_search', status: kwResult.res.status, preview: kwResult.preview } }, { status: 200 })
+        }
+        const { res: kwRes, body: kwData } = kwResult
+        cr = kwData.credits_remaining ?? cr
+
+        if (kwRes.ok) {
+          console.error('[tiktok] keyword search keys:', JSON.stringify(Object.keys(kwData)))
+          const kwItems = kwData?.ads ?? kwData?.data ?? kwData?.results ?? kwData?.itemList ?? kwData?.items ?? (Array.isArray(kwData) ? kwData : [])
+          rawAds = Array.isArray(kwItems) ? kwItems : []
+          console.error('[tiktok] keyword search count:', rawAds.length)
+          if (rawAds.length > 0) console.error('[tiktok] keyword search first item keys:', Object.keys(rawAds[0]))
+        } else {
+          console.error('[tiktok] keyword search endpoint status:', kwRes.status)
+        }
+
+        if (rawAds.length > 0) {
+          lookup = 'found'
+          source = 'keyword_search'
+        }
+      }
+    } // end: !urlHandle
+
+    // STEP 3 — Profile + videos (last resort when no URL, or first step when URL provided)
     if (rawAds.length === 0) {
       console.error('[tiktok] falling back to profile/videos')
-      const handle = query.trim().toLowerCase().replace(/\s+/g, '')
+      const handle = urlHandle ?? query.trim().toLowerCase().replace(/\s+/g, '')
       const pResult = await sc(
         `${SC_BASE_URL}/v1/tiktok/profile?handle=${encodeURIComponent(handle)}`,
         apiKey,

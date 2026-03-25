@@ -14,8 +14,12 @@ interface SearchHistoryItem {
 export default function Home() {
   const router = useRouter()
   const [inputValue, setInputValue] = useState('')
+  const [metaUrl, setMetaUrl] = useState('')
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [tiktokUrl, setTiktokUrl] = useState('')
   const [domain, setDomain] = useState('')
   const [context, setContext] = useState('')
+  const [platforms, setPlatforms] = useState({ meta: true, google: true, tiktok: true, youtube: true })
   const [showRefine, setShowRefine] = useState(false)
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([])
 
@@ -37,6 +41,11 @@ export default function Home() {
     if (!inputValue.trim()) return
     await supabase.from('search_history').insert({ query: inputValue.trim() })
     const params = new URLSearchParams({ q: inputValue.trim() })
+    const selectedPlatforms = Object.entries(platforms).filter(([, v]) => v).map(([k]) => k).join(',')
+    params.set('platforms', selectedPlatforms)
+    if (metaUrl.trim()) params.set('meta_url', metaUrl.trim())
+    if (youtubeUrl.trim()) params.set('youtube_url', youtubeUrl.trim())
+    if (tiktokUrl.trim()) params.set('tiktok_url', tiktokUrl.trim())
     if (domain.trim()) params.set('domain', domain.trim())
     if (context.trim()) params.set('context', context.trim())
     router.push(`/search?${params.toString()}`)
@@ -159,45 +168,57 @@ export default function Home() {
           <div
             style={{
               width: '100%',
-              maxHeight: showRefine ? 200 : 0,
+              maxHeight: showRefine ? 600 : 0,
               overflow: 'hidden',
               transition: 'max-height 0.3s ease, opacity 0.3s ease',
               opacity: showRefine ? 1 : 0,
             }}
           >
-            <input
-              type="text"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              placeholder="https://www.equinox.com"
-              aria-label="Brand Website (optional)"
-              style={{
-                width: '100%',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-1)',
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                borderRadius: 'var(--radius)',
-                padding: 12,
-                outline: 'none',
-                boxSizing: 'border-box',
-                marginTop: 8,
-              }}
-            />
-            <span
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 11,
-                color: 'var(--text-3)',
-                display: 'block',
-                marginTop: 2,
-                marginBottom: 4,
-                paddingLeft: 2,
-              }}
-            >
-              Brand Website (optional)
-            </span>
+            {/* Per-platform URL fields */}
+            {([
+              { key: 'meta' as const, icon: '\u25C8', label: 'Meta / Instagram URL', placeholder: 'https://www.instagram.com/equinox/', value: metaUrl, setter: setMetaUrl },
+              { key: 'youtube' as const, icon: '\u25B6', label: 'YouTube Channel URL', placeholder: 'https://www.youtube.com/@Equinox', value: youtubeUrl, setter: setYoutubeUrl },
+              { key: 'tiktok' as const, icon: '\u266A', label: 'TikTok Profile URL', placeholder: 'https://www.tiktok.com/@equinox', value: tiktokUrl, setter: setTiktokUrl },
+              { key: 'google' as const, icon: '\u25C9', label: 'Google / Website Domain', placeholder: 'https://www.equinox.com', value: domain, setter: setDomain },
+            ]).map(({ key, icon, label, placeholder, value, setter }) => (
+              platforms[key] && (
+                <div key={key} style={{ marginTop: 8 }}>
+                  <span
+                    style={{
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 11,
+                      color: 'var(--text-3)',
+                      display: 'block',
+                      marginBottom: 2,
+                      paddingLeft: 2,
+                    }}
+                  >
+                    {icon} {label}
+                  </span>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    placeholder={placeholder}
+                    aria-label={label}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-1)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-1)',
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 14,
+                      borderRadius: 'var(--radius)',
+                      padding: 12,
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              )
+            ))}
+
+            {/* Brand context */}
             <textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
@@ -216,7 +237,7 @@ export default function Home() {
                 outline: 'none',
                 boxSizing: 'border-box',
                 resize: 'none',
-                marginTop: 4,
+                marginTop: 8,
               }}
             />
             <span
@@ -233,28 +254,71 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Platform pills */}
+          {/* Platform checkboxes */}
           <div
             style={{
               marginTop: 12,
-              display: 'flex',
-              flexDirection: 'row',
-              gap: 12,
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '6px 24px',
               justifyContent: 'center',
             }}
           >
-            {['◈ Meta', '◉ Google', '♪ TikTok', '▶ YouTube'].map((label) => (
-              <span
-                key={label}
-                style={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 12,
-                  color: 'var(--text-3)',
-                }}
-              >
-                {label}
-              </span>
-            ))}
+            {([
+              { key: 'meta' as const, icon: '\u25C8', label: 'Meta' },
+              { key: 'google' as const, icon: '\u25C9', label: 'Google' },
+              { key: 'tiktok' as const, icon: '\u266A', label: 'TikTok' },
+              { key: 'youtube' as const, icon: '\u25B6', label: 'YouTube' },
+            ]).map(({ key, icon, label }) => {
+              const checked = platforms[key]
+              return (
+                <label
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    const otherChecked = Object.entries(platforms).some(([k, v]) => k !== key && v)
+                    if (!checked || otherChecked) {
+                      setPlatforms((prev) => ({ ...prev, [key]: !prev[key] }))
+                    }
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 3,
+                      border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                      background: checked ? 'var(--accent)' : 'var(--bg-1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 10,
+                      color: 'var(--bg)',
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {checked ? '\u2713' : ''}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 12,
+                      color: 'var(--text-2)',
+                    }}
+                  >
+                    {icon} {label}
+                  </span>
+                </label>
+              )
+            })}
           </div>
 
           {/* CTA Button */}
