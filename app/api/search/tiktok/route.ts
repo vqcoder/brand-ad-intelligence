@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { normaliseTikTokVideo } from '@/lib/normalisers'
+import { SC_BASE_URL } from '@/lib/constants'
 
 async function sc(url: string, apiKey: string) {
   console.error('[search/tiktok] fetching:', url)
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     const handle = handles[i]
     if (i > 0) fallback = true
     try {
-      const { res: pRes, body: pData } = await sc(`https://api.scrapecreators.com/v1/tiktok/profile?handle=${encodeURIComponent(handle)}`, apiKey)
+      const { res: pRes, body: pData } = await sc(`${SC_BASE_URL}/v1/tiktok/profile?handle=${encodeURIComponent(handle)}`, apiKey)
       cr = pData.credits_remaining ?? cr
       if (!pRes.ok) { lookup = 'error'; continue }
 
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
         rawAds = profileItems
       } else {
         // Fall back to dedicated videos endpoint
-        const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(resolvedHandle)}`, apiKey)
+        const { res: vRes, body: vData } = await sc(`${SC_BASE_URL}/v3/tiktok/profile/videos?handle=${encodeURIComponent(resolvedHandle)}`, apiKey)
         cr = vData.credits_remaining ?? cr
         if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
 

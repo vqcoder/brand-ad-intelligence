@@ -1,3 +1,5 @@
+import { SC_BASE_URL } from '@/lib/constants'
+
 export async function GET(request: Request) {
   const apiKey = request.headers.get('x-api-key') || process.env.SCRAPECREATORS_API_KEY || ''
 
@@ -12,7 +14,7 @@ export async function GET(request: Request) {
     // SC embeds credits_remaining in every API response.
     // Use the cheapest call: a company search with a short query.
     const res = await fetch(
-      'https://api.scrapecreators.com/v1/facebook/adLibrary/search/companies?query=test',
+      `${SC_BASE_URL}/v1/facebook/adLibrary/search/companies?query=a`,
       { headers: { 'x-api-key': apiKey } }
     )
 

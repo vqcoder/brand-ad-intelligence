@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { normaliseGoogleAd } from '@/lib/normalisers'
+import { SC_BASE_URL } from '@/lib/constants'
 
 async function sc(url: string, apiKey: string) {
   console.error('[search/google] fetching:', url)
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
   let cr: number | null = null
 
   try {
-    const { res: sRes, body: sData } = await sc(`https://api.scrapecreators.com/v1/google/adLibrary/advertisers/search?query=${encodeURIComponent(query)}`, apiKey)
+    const { res: sRes, body: sData } = await sc(`${SC_BASE_URL}/v1/google/adLibrary/advertisers/search?query=${encodeURIComponent(query)}`, apiKey)
     cr = sData.credits_remaining ?? null
     if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
 
@@ -69,14 +70,14 @@ export async function POST(request: Request) {
 
     if (advId) {
       lookup = 'found'
-      const { res: aRes, body: aData } = await sc(`https://api.scrapecreators.com/v1/google/company/ads?advertiser_id=${advId}&region=US`, apiKey)
+      const { res: aRes, body: aData } = await sc(`${SC_BASE_URL}/v1/google/company/ads?advertiser_id=${advId}&region=US`, apiKey)
       cr = aData.credits_remaining ?? cr
       if (!aRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${aRes.status}: ${JSON.stringify(aData).slice(0, 200)}` }, { status: 502 })
       rawAds = extractAds(aData, 'company ads')
     } else {
       fallback = true
       const domain = query.toLowerCase().replace(/\s+/g, '') + '.com'
-      const { res: fRes, body: fData } = await sc(`https://api.scrapecreators.com/v1/google/company/ads?domain=${encodeURIComponent(domain)}&region=US`, apiKey)
+      const { res: fRes, body: fData } = await sc(`${SC_BASE_URL}/v1/google/company/ads?domain=${encodeURIComponent(domain)}&region=US`, apiKey)
       cr = fData.credits_remaining ?? cr
       if (!fRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${fRes.status}: ${JSON.stringify(fData).slice(0, 200)}` }, { status: 502 })
       rawAds = extractAds(fData, 'domain fallback')

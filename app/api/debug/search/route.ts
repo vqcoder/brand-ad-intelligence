@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { SC_BASE_URL } from '@/lib/constants'
 
 // Safety: only works in non-production or with a debug header
 export async function GET(req: NextRequest) {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not allowed' }, { status: 403 })
   }
 
-  const query = req.nextUrl.searchParams.get('q') || 'equinox'
+  const query = req.nextUrl.searchParams.get('q') || 'apple'
   const key = process.env.SCRAPECREATORS_API_KEY
 
   const result: Record<string, unknown> = {
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   // Test Meta company search directly
   try {
-    const url = `https://api.scrapecreators.com/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`
+    const url = `${SC_BASE_URL}/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`
     const res = await fetch(url, { headers: { 'x-api-key': key } })
     const body = await res.json()
     result.meta_company_search = {
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   // Test Google advertiser search directly
   try {
-    const url = `https://api.scrapecreators.com/v1/google/adLibrary/advertisers/search?query=${encodeURIComponent(query)}`
+    const url = `${SC_BASE_URL}/v1/google/adLibrary/advertisers/search?query=${encodeURIComponent(query)}`
     const res = await fetch(url, { headers: { 'x-api-key': key } })
     const body = await res.json()
     result.google_advertiser_search = {
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   // Test TikTok profile directly
   try {
-    const url = `https://api.scrapecreators.com/v1/tiktok/profile?handle=${encodeURIComponent(query)}`
+    const url = `${SC_BASE_URL}/v1/tiktok/profile?handle=${encodeURIComponent(query)}`
     const res = await fetch(url, { headers: { 'x-api-key': key } })
     const body = await res.json()
     result.tiktok_profile = {

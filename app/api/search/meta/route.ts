@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { normaliseMetaAd } from '@/lib/normalisers'
+import { SC_BASE_URL } from '@/lib/constants'
 
 async function sc(url: string, apiKey: string) {
   console.error('[search/meta] fetching:', url)
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   let cr: number | null = null
 
   try {
-    const { res: sRes, body: sData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`, apiKey)
+    const { res: sRes, body: sData } = await sc(`${SC_BASE_URL}/v1/facebook/adLibrary/search/companies?query=${encodeURIComponent(query)}`, apiKey)
     cr = sData.credits_remaining ?? null
     if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
 
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
 
     if (pageId) {
       lookup = 'found'
-      const { res: aRes, body: aData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/company/ads?pageId=${pageId}&country=US`, apiKey)
+      const { res: aRes, body: aData } = await sc(`${SC_BASE_URL}/v1/facebook/adLibrary/company/ads?pageId=${pageId}&country=US`, apiKey)
       cr = aData.credits_remaining ?? cr
       if (!aRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${aRes.status}: ${JSON.stringify(aData).slice(0, 200)}` }, { status: 502 })
       rawAds = extractAds(aData, 'company ads')
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
 
     if (rawAds.length === 0) {
       fallback = !pageId ? true : (fallback = true)
-      const { res: fRes, body: fData } = await sc(`https://api.scrapecreators.com/v1/facebook/adLibrary/search/ads?query=${encodeURIComponent(query)}&status=ALL&ad_type=all&country=US`, apiKey)
+      const { res: fRes, body: fData } = await sc(`${SC_BASE_URL}/v1/facebook/adLibrary/search/ads?query=${encodeURIComponent(query)}&status=ALL&ad_type=all&country=US`, apiKey)
       cr = fData.credits_remaining ?? cr
       if (!fRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${fRes.status}: ${JSON.stringify(fData).slice(0, 200)}` }, { status: 502 })
       rawAds = extractAds(fData, 'keyword fallback')
