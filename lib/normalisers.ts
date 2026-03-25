@@ -221,17 +221,28 @@ export function normaliseTikTokVideo(raw: Record<string, unknown>): CreativeReco
   const advertiserHandle = v.advertiser_handle || v.author?.unique_id || v.author?.uniqueId || null
   const advertiserId = v.advertiser_id || v.author?.id || null
 
+  // aweme_list video URLs are nested under play_addr/download_addr/cover url_list arrays
+  const videoUrl = v.videoUrl || v.video_url
+    || v.video?.play_addr?.url_list?.[0]
+    || v.video?.download_addr?.url_list?.[0]
+    || v.video?.playAddr || v.playAddr || v.play || v.download_url || null
+
+  const thumbnailUrl = v.coverUrl || v.cover_url
+    || v.video?.cover?.url_list?.[0]
+    || v.video?.dynamic_cover?.url_list?.[0]
+    || v.video?.cover || v.cover || v.thumbnail_url || v.origin_cover || null
+
   return {
     platform: 'tiktok',
-    platform_ad_id: v.ad_id || v.id || v.video_id || null,
+    platform_ad_id: v.aweme_id || v.ad_id || v.id || v.video_id || null,
     title: v.title || v.desc || v.ad_title || null,
     body_text: desc,
     cta: v.cta || v.call_to_action || null,
     format: 'video',
     media_type: 'video',
-    media_url: v.coverUrl || v.cover_url || v.video?.cover || v.cover || v.thumbnail_url || null,
-    thumbnail_url: v.coverUrl || v.cover_url || v.video?.cover || v.cover || v.thumbnail_url || v.origin_cover || null,
-    video_url: v.videoUrl || v.video_url || v.video?.playAddr || v.playAddr || v.play || v.download_url || null,
+    media_url: thumbnailUrl,
+    thumbnail_url: thumbnailUrl,
+    video_url: videoUrl,
     destination_url: v.landing_page_url || v.destination_url || v.share_url || null,
     page_name: advertiserName,
     first_shown: firstShown,
@@ -240,13 +251,13 @@ export function normaliseTikTokVideo(raw: Record<string, unknown>): CreativeReco
     days_running: v.days_running || null,
     regions: v.regions || v.countries || [],
     advertiser_id: advertiserId,
-    creative_id: v.creative_id || v.id || v.video_id || null,
+    creative_id: v.creative_id || v.aweme_id || v.id || v.video_id || null,
     headline: v.title || v.desc || v.ad_title || null,
     description: v.desc || v.description || null,
-    view_count: v.impressions || v.play_count || v.stats?.playCount || null,
-    like_count: v.likes || v.digg_count || v.stats?.diggCount || null,
-    comment_count: v.comments || v.comment_count || v.stats?.commentCount || null,
-    share_count: v.shares || v.share_count || v.stats?.shareCount || null,
+    view_count: v.impressions || v.statistics?.play_count || v.play_count || v.stats?.playCount || null,
+    like_count: v.likes || v.statistics?.digg_count || v.digg_count || v.stats?.diggCount || null,
+    comment_count: v.comments || v.statistics?.comment_count || v.comment_count || v.stats?.commentCount || null,
+    share_count: v.shares || v.statistics?.share_count || v.share_count || v.stats?.shareCount || null,
     hashtags: extractHashtags(desc),
     duration_seconds: v.video?.duration || v.duration || null,
     author_handle: advertiserHandle,

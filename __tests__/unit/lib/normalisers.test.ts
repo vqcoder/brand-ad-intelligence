@@ -30,20 +30,22 @@ const GOOGLE_RAW = {
 }
 
 const TIKTOK_RAW = {
-  id: '7234567890123456789',
+  aweme_id: '7234567890123456789',
   desc: 'Check this out #fitness #brand',
-  createTime: 1700000000,
+  create_time: 1700000000,
   video: {
-    playAddr: 'https://example.com/video.mp4',
-    cover: 'https://example.com/cover.jpg',
+    play_addr: { url_list: ['https://example.com/video.mp4'] },
+    download_addr: { url_list: ['https://example.com/video_dl.mp4'] },
+    cover: { url_list: ['https://example.com/cover.jpg'] },
+    dynamic_cover: { url_list: ['https://example.com/dynamic_cover.gif'] },
     duration: 30,
   },
   author: { uniqueId: 'testbrand', nickname: 'Test Brand' },
-  stats: {
-    playCount: 1200000,
-    diggCount: 48000,
-    commentCount: 2100,
-    shareCount: 890,
+  statistics: {
+    play_count: 1200000,
+    digg_count: 48000,
+    comment_count: 2100,
+    share_count: 890,
   },
 }
 
@@ -224,7 +226,7 @@ describe('normaliseTikTokVideo', () => {
     expect(normaliseTikTokVideo(TIKTOK_RAW).platform).toBe('tiktok')
   })
 
-  it('extracts video_url from video.playAddr', () => {
+  it('extracts video_url from video.play_addr.url_list', () => {
     expect(normaliseTikTokVideo(TIKTOK_RAW).video_url).toBe('https://example.com/video.mp4')
   })
 
@@ -234,7 +236,7 @@ describe('normaliseTikTokVideo', () => {
     expect(r.hashtags).toContain('brand')
   })
 
-  it('maps view_count and like_count from stats', () => {
+  it('maps view_count and like_count from statistics', () => {
     const r = normaliseTikTokVideo(TIKTOK_RAW)
     expect(r.view_count).toBe(1200000)
     expect(r.like_count).toBe(48000)
@@ -254,7 +256,7 @@ describe('normaliseTikTokVideo', () => {
     expect(normaliseTikTokVideo(TIKTOK_RAW).duration_seconds).toBe(30)
   })
 
-  it('extracts thumbnail from video.cover', () => {
+  it('extracts thumbnail from video.cover.url_list', () => {
     expect(normaliseTikTokVideo(TIKTOK_RAW).thumbnail_url).toBe('https://example.com/cover.jpg')
   })
 })

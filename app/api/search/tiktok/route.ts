@@ -147,7 +147,7 @@ export async function POST(request: Request) {
               cr = vData.credits_remaining ?? cr
               if (vRes.ok) {
                 console.error('[tiktok] profile videos keys:', JSON.stringify(Object.keys(vData)))
-                const vItems = vData?.itemList ?? vData?.items ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
+                const vItems = vData?.aweme_list ?? vData?.itemList ?? vData?.items ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
                 rawAds = Array.isArray(vItems) ? vItems : []
                 console.error('[tiktok] profile videos count:', rawAds.length)
                 source = 'profile_videos'
