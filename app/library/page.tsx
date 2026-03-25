@@ -38,18 +38,23 @@ export default function LibraryPage() {
   const fetchCreatives = useCallback(async () => {
     const { data } = await supabase
       .from('creatives')
-      .select('*')
+      .select('*, brands(name, color)')
       .order('created_at', { ascending: false })
-    if (data) setCreatives(data)
+    if (data) {
+      // Flatten brand name onto each row for easy access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = data.map((d: any) => ({ ...d, brand_name: d.brands?.name ?? null }))
+      setCreatives(rows)
+    }
   }, [])
 
   const fetchBrands = useCallback(async () => {
     const { data } = await supabase
-      .from('creatives')
-      .select('brand_name')
+      .from('brands')
+      .select('name')
     if (data) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const unique = [...new Set(data.map((d: any) => d.brand_name).filter(Boolean))] as string[]
+      const unique = [...new Set(data.map((d: any) => d.name).filter(Boolean))] as string[]
       setBrands(unique.sort())
     }
   }, [])

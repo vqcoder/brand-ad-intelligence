@@ -262,6 +262,8 @@ function SearchContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [credits, setCredits] = useState<string>('--')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveCount, setSaveCount] = useState(0)
 
   // Read credits from localStorage
   useEffect(() => {
@@ -339,21 +341,95 @@ function SearchContent() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
+    setSaveCount(0)
     const selected = sorted.filter((c, i) => selectedIds.has(c.platform_ad_id || `idx-${i}`))
-    for (const creative of selected) {
-      await supabase.from('creatives').upsert(
-        {
-          ...creative,
-          brand_name: q,
-          auto_synced: true,
-        },
-        { onConflict: 'platform_ad_id' },
-      )
-    }
-    setTimeout(() => {
+
+    if (selected.length === 0) { setSaving(false); return }
+
+    console.warn('[save] selected count:', selectedIds.size)
+    console.warn('[save] first creative sample:', JSON.stringify(selected[0]).slice(0, 300))
+
+    try {
+      // 1. Upsert brand — get or create
+      const { data: brand, error: brandErr } = await supabase
+        .from('brands')
+        .upsert(
+          { name: q, website: domain || '' },
+          { onConflict: 'name', ignoreDuplicates: false },
+        )
+        .select('id')
+        .single()
+
+      if (brandErr || !brand) {
+        console.error('[save] brand upsert error:', brandErr?.message, brandErr?.details)
+        setSaveError(`Brand error: ${brandErr?.message}`)
+        setSaving(false)
+        return
+      }
+
+      const brandId = brand.id
+
+      // 2. Map CreativeRecord fields to exact DB columns
+      const rows = selected.map((c) => ({
+        brand_id: brandId,
+        platform: c.platform,
+        platform_ad_id: c.platform_ad_id,
+        title: c.title,
+        body_text: c.body_text,
+        cta: c.cta,
+        format: c.format,
+        media_type: c.media_type,
+        media_url: c.media_url,
+        thumbnail_url: c.thumbnail_url,
+        video_url: c.video_url,
+        destination_url: c.destination_url,
+        page_name: c.page_name,
+        first_shown: c.first_shown,
+        last_shown: c.last_shown,
+        is_active: c.is_active,
+        days_running: c.days_running,
+        regions: c.regions,
+        advertiser_id: c.advertiser_id,
+        creative_id: c.creative_id,
+        headline: c.headline,
+        description: c.description,
+        view_count: c.view_count,
+        like_count: c.like_count,
+        comment_count: c.comment_count,
+        share_count: c.share_count,
+        hashtags: c.hashtags,
+        duration_seconds: c.duration_seconds,
+        author_handle: c.author_handle,
+        ad_library_url: c.ad_library_url,
+        raw_data: c.raw_data,
+        auto_synced: false,
+      }))
+
+      // 3. Upsert creatives (dedup on brand_id + platform_ad_id)
+      const { error } = await supabase
+        .from('creatives')
+        .upsert(rows, { onConflict: 'brand_id,platform_ad_id', ignoreDuplicates: true })
+
+      if (error) {
+        console.error('[save] supabase error:', error.message, error.details)
+        setSaveError(`Save failed: ${error.message}`)
+        setSaving(false)
+        return
+      }
+
+      console.warn('[save] success — saved', selected.length, 'creatives for brand', brandId)
+      setSaveCount(selected.length)
+      setTimeout(() => {
+        setSaving(false)
+        setSelectedIds(new Set())
+        setSaveCount(0)
+      }, 3000)
+    } catch (err) {
+      console.error('[save] exception:', err)
+      setSaveError(String(err))
       setSaving(false)
-      setSelectedIds(new Set())
-    }, 2000)
+    }
   }
 
   const statusLabel = (ps: PlatformStatus) => {
@@ -533,8 +609,17 @@ function SearchContent() {
             {selectedIds.size} selected
           </span>
 
-          {saving ? (
-            <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: V.accent, fontWeight: 700 }}>Saved!</span>
+          {saveError ? (
+            <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: V.danger, fontWeight: 700 }}>{saveError}</span>
+          ) : saveCount > 0 ? (
+            <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: V.accent, fontWeight: 700 }}>
+              {saveCount} creative{saveCount !== 1 ? 's' : ''} saved{' '}
+              <span onClick={() => router.push('/library')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>
+                View Library &rarr;
+              </span>
+            </span>
+          ) : saving ? (
+            <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: V.text2 }}>Saving...</span>
           ) : (
             <button
               onClick={handleSave}
