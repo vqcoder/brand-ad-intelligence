@@ -243,6 +243,8 @@ function SearchContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const q = searchParams.get('q') || ''
+  const domain = searchParams.get('domain') || ''
+  const context = searchParams.get('context') || ''
 
   const [metaStatus, setMetaStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
   const [googleStatus, setGoogleStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
@@ -276,7 +278,7 @@ function SearchContent() {
         const res = await fetch(`/api/search/${platform}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: q, domain: domain || undefined, context: context || undefined }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
@@ -290,7 +292,7 @@ function SearchContent() {
     fetchPlatform('meta', setMetaStatus)
     fetchPlatform('google', setGoogleStatus)
     fetchPlatform('tiktok', setTiktokStatus)
-  }, [q])
+  }, [q, domain, context])
 
   // Merged + filtered + sorted creatives
   const allCreatives: CreativeRecord[] = [...metaStatus.results, ...googleStatus.results, ...tiktokStatus.results]

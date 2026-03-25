@@ -14,6 +14,9 @@ interface SearchHistoryItem {
 export default function Home() {
   const router = useRouter()
   const [inputValue, setInputValue] = useState('')
+  const [domain, setDomain] = useState('')
+  const [context, setContext] = useState('')
+  const [showRefine, setShowRefine] = useState(false)
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([])
 
   useEffect(() => {
@@ -33,7 +36,10 @@ export default function Home() {
   const handleSubmit = async () => {
     if (!inputValue.trim()) return
     await supabase.from('search_history').insert({ query: inputValue.trim() })
-    router.push(`/search?q=${encodeURIComponent(inputValue.trim())}`)
+    const params = new URLSearchParams({ q: inputValue.trim() })
+    if (domain.trim()) params.set('domain', domain.trim())
+    if (context.trim()) params.set('context', context.trim())
+    router.push(`/search?${params.toString()}`)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -131,6 +137,101 @@ export default function Home() {
               e.currentTarget.style.borderColor = 'var(--border)'
             }}
           />
+
+          {/* Refine toggle */}
+          <button
+            onClick={() => setShowRefine(!showRefine)}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 13,
+              color: 'var(--text-3)',
+              cursor: 'pointer',
+              marginTop: 8,
+              padding: 0,
+            }}
+          >
+            {showRefine ? '− Less options' : '+ Refine search'}
+          </button>
+
+          {/* Refinement fields */}
+          <div
+            style={{
+              width: '100%',
+              maxHeight: showRefine ? 200 : 0,
+              overflow: 'hidden',
+              transition: 'max-height 0.3s ease, opacity 0.3s ease',
+              opacity: showRefine ? 1 : 0,
+            }}
+          >
+            <input
+              type="text"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="https://www.equinox.com"
+              aria-label="Brand Website (optional)"
+              style={{
+                width: '100%',
+                background: 'var(--bg-1)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-1)',
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 14,
+                borderRadius: 'var(--radius)',
+                padding: 12,
+                outline: 'none',
+                boxSizing: 'border-box',
+                marginTop: 8,
+              }}
+            />
+            <span
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 11,
+                color: 'var(--text-3)',
+                display: 'block',
+                marginTop: 2,
+                marginBottom: 4,
+                paddingLeft: 2,
+              }}
+            >
+              Brand Website (optional)
+            </span>
+            <textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="e.g. Equinox is a luxury gym and fitness club..."
+              rows={2}
+              aria-label="What does this brand do? (optional)"
+              style={{
+                width: '100%',
+                background: 'var(--bg-1)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-1)',
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 14,
+                borderRadius: 'var(--radius)',
+                padding: 12,
+                outline: 'none',
+                boxSizing: 'border-box',
+                resize: 'none',
+                marginTop: 4,
+              }}
+            />
+            <span
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 11,
+                color: 'var(--text-3)',
+                display: 'block',
+                marginTop: 2,
+                paddingLeft: 2,
+              }}
+            >
+              What does this brand do? (optional)
+            </span>
+          </div>
 
           {/* Platform pills */}
           <div

@@ -38,17 +38,20 @@ export async function POST(request: Request) {
       cr = pData.credits_remaining ?? cr
       if (!pRes.ok) { lookup = 'error'; continue }
 
+      // Log all keys from the profile response for debugging
+      console.error('[tiktok] ALL profile keys:', JSON.stringify(Object.keys(pData)))
+      console.error('[tiktok] itemList length:', pData.itemList?.length)
+
       // SC returns profile under body.user (not body.userInfo)
       const user = pData?.user || pData?.userInfo?.user
+      console.error('[tiktok] user:', user?.uniqueId)
       if (!user) continue
       lookup = 'found'
       const resolvedHandle = user.uniqueId || handle
-      console.error('[search/tiktok] profile user:', user.uniqueId ?? 'not found')
-      console.error('[search/tiktok] profile itemList count:', Array.isArray(pData?.itemList) ? pData.itemList.length : 'none')
 
       // Profile endpoint may already include itemList — use it if present
       let rawAds: Record<string, unknown>[] = []
-      const profileItems = Array.isArray(pData?.itemList) ? pData.itemList : []
+      const profileItems = Array.isArray(pData?.itemList) ? pData.itemList : (Array.isArray(pData?.items) ? pData.items : [])
       if (profileItems.length > 0) {
         rawAds = profileItems
       } else {
@@ -57,13 +60,14 @@ export async function POST(request: Request) {
         cr = vData.credits_remaining ?? cr
         if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
 
-        console.error('[search/tiktok] videos keys:', Object.keys(vData))
-        console.error('[search/tiktok] videos count:', Array.isArray(vData?.itemList) ? vData.itemList.length : 'key missing')
-        const vids = ('itemList' in vData ? vData.itemList : null) ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
+        console.error('[tiktok] videos response keys:', JSON.stringify(Object.keys(vData)))
+        console.error('[tiktok] videos itemList count:', Array.isArray(vData?.itemList) ? vData.itemList.length : 'key missing')
+        const vids = ('itemList' in vData ? vData.itemList : null) ?? vData?.items ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
         rawAds = Array.isArray(vids) ? vids : []
       }
       if (rawAds.length === 0) continue
 
+      console.error('[tiktok] first raw item keys:', rawAds[0] ? Object.keys(rawAds[0]) : 'no items')
       const nickname = user?.nickname || resolvedHandle
       const results = rawAds.map((v) => {
         const r = normaliseTikTokVideo(v)
@@ -71,6 +75,7 @@ export async function POST(request: Request) {
         if (!r.author_handle) r.author_handle = resolvedHandle
         return r
       })
+      console.error('[tiktok] normalised count:', results.filter(Boolean).length)
 
       return NextResponse.json({ results, credits_used: 2, debug: { query, key_present: true, company_lookup: lookup, fallback_used: fallback, raw_count: rawAds.length, sc_credits_remaining: cr } })
     } catch (error: unknown) {

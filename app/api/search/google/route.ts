@@ -20,7 +20,7 @@ function extractAds(data: Record<string, unknown>, label: string) {
 
 export async function POST(request: Request) {
   const reqBody = await request.json()
-  const { query } = reqBody
+  const { query, domain, context } = reqBody
 
   if (!query || typeof query !== 'string' || query.trim() === '') {
     return Response.json({ error: 'query is required and must be a non-empty string' }, { status: 400 })
@@ -37,6 +37,31 @@ export async function POST(request: Request) {
   let cr: number | null = null
 
   try {
+    // Priority 0: if domain was provided, try it directly first
+    let hostname: string | null = null
+    if (domain) {
+      try { hostname = new URL(domain.startsWith('http') ? domain : `https://${domain}`).hostname.replace(/^www\./, '') } catch { /* invalid URL */ }
+    }
+
+    if (hostname) {
+      console.error('[search/google] domain-first lookup:', hostname)
+      const { res: dRes, body: dData } = await sc(`${SC_BASE_URL}/v1/google/company/ads?domain=${encodeURIComponent(hostname)}&region=US`, apiKey)
+      cr = dData.credits_remaining ?? cr
+      if (dRes.ok) {
+        const domainAds = extractAds(dData, 'domain-first')
+        if (domainAds.length > 0) {
+          lookup = 'found'
+          const results = domainAds.map((ad) => {
+            const r = normaliseGoogleAd(ad as Record<string, unknown>)
+            if (!r.page_name) r.page_name = query
+            return r
+          })
+          return NextResponse.json({ results, credits_used: 1, debug: { query, domain: hostname, context, key_present: true, company_lookup: lookup, fallback_used: false, raw_count: domainAds.length, sc_credits_remaining: cr } })
+        }
+      }
+      console.error('[search/google] domain-first returned 0 ads, falling through to advertiser search')
+    }
+
     const { res: sRes, body: sData } = await sc(`${SC_BASE_URL}/v1/google/adLibrary/advertisers/search?query=${encodeURIComponent(query)}`, apiKey)
     cr = sData.credits_remaining ?? null
     if (!sRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${sRes.status}: ${JSON.stringify(sData).slice(0, 200)}` }, { status: 502 })
