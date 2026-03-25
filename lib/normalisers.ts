@@ -12,6 +12,31 @@ function computeDaysRunning(firstShown: string | null, lastShown: string | null)
   return Math.floor((end - start) / 86400000)
 }
 
+/** Convert a value that may be Unix seconds (number) or an ISO string to ISO. */
+function toISO(val: unknown): string | null {
+  if (!val) return null
+  if (typeof val === 'number' && isFinite(val)) {
+    // Unix seconds → ms (values < 1e12 are definitely seconds, not ms)
+    const ms = val < 1e12 ? val * 1000 : val
+    return new Date(ms).toISOString()
+  }
+  if (typeof val === 'string') return val
+  return null
+}
+
+/** Convert a value that may be Unix seconds or ISO string to epoch ms. */
+function toMs(val: unknown): number | null {
+  if (!val) return null
+  if (typeof val === 'number' && isFinite(val)) {
+    return val < 1e12 ? val * 1000 : val
+  }
+  if (typeof val === 'string') {
+    const t = new Date(val).getTime()
+    return isNaN(t) ? null : t
+  }
+  return null
+}
+
 function extractHashtags(text: string | null): string[] {
   if (!text) return []
   const matches = text.match(/#(\w+)/g)
@@ -21,26 +46,53 @@ function extractHashtags(text: string | null): string[] {
 
 export function normaliseMetaAd(raw: Record<string, unknown>): CreativeRecord {
   const ad = raw as RawData
-  const firstShown = (ad.start_date || ad.first_shown || ad.created_at || null) as string | null
-  const lastShown = (ad.end_date || ad.last_shown || null) as string | null
+
+  // SC returns dates as Unix seconds OR ISO strings — normalise to ISO
+  const rawStart = ad.start_date || ad.first_shown || ad.created_at || null
+  const rawEnd = ad.end_date || ad.last_shown || null
+  const firstShown = toISO(rawStart)
+  const lastShown = toISO(rawEnd)
+
+  // Compute days_running from the resolved timestamps
+  const firstMs = toMs(rawStart)
+  const lastMs = rawEnd ? toMs(rawEnd) : (firstMs ? Date.now() : null)
+  const daysRunning = ad.days_running ||
+    (firstMs && lastMs ? Math.floor((lastMs - firstMs) / 86_400_000) : null) ||
+    computeDaysRunning(firstShown, lastShown)
+
+  // Extract media from snapshot structure (SC Meta response)
+  const snap = ad.snapshot as RawData | undefined
+  const snapImages: string[] = snap?.images ?? []
+  const snapVideos: RawData[] = snap?.videos ?? []
+  const snapHtml: string = snap?.body?.markup?.__html ?? ''
+  const snapBodyText = snapHtml.replace(/<[^>]*>/g, '').trim() || null
+
+  const thumbnailUrl = snapImages[0] ?? snapVideos[0]?.video_preview_image_url ??
+    (ad.thumbnail_url || ad.image_url || null)
+  const mediaUrl = snapImages[0] ?? (ad.image_url || ad.media_url || null)
+  const videoUrl = snapVideos[0]?.video_hd_url ?? snapVideos[0]?.video_sd_url ??
+    (ad.video_url || ad.video_sd_url || ad.video_hd_url || null)
+  const mediaType = ad.media_type ||
+    (snapVideos.length > 0 ? 'video' : snapImages.length > 0 ? 'image' :
+    (ad.video_url ? 'video' : ad.image_url ? 'image' : null))
 
   return {
     platform: 'meta',
     platform_ad_id: ad.ad_id || ad.id || null,
     title: ad.title || ad.ad_title || null,
-    body_text: ad.body?.text || ad.body || ad.ad_body || ad.description || null,
+    body_text: ad.body?.text || (typeof ad.body === 'string' ? ad.body : null) || ad.ad_body || ad.description || snapBodyText,
     cta: ad.cta_text || ad.call_to_action || ad.cta || null,
     format: ad.ad_format || ad.format || null,
-    media_type: ad.media_type || (ad.video_url ? 'video' : ad.image_url ? 'image' : null),
-    media_url: ad.image_url || ad.media_url || null,
-    thumbnail_url: ad.thumbnail_url || ad.image_url || null,
-    video_url: ad.video_url || ad.video_sd_url || ad.video_hd_url || null,
+    media_type: mediaType,
+    media_url: mediaUrl,
+    thumbnail_url: thumbnailUrl,
+    video_url: videoUrl,
     destination_url: ad.link_url || ad.landing_page_url || ad.destination_url || null,
     page_name: ad.page_name || ad.advertiser_name || null,
     first_shown: firstShown,
     last_shown: lastShown,
     is_active: ad.is_active ?? (ad.status === 'ACTIVE'),
-    days_running: ad.days_running || computeDaysRunning(firstShown, lastShown),
+    days_running: daysRunning,
     regions: ad.regions || ad.countries || [],
     advertiser_id: ad.page_id || null,
     creative_id: ad.creative_id || ad.ad_creative_id || null,

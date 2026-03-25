@@ -70,6 +70,39 @@ describe('normaliseMetaAd', () => {
   it('extracts cta', () => {
     expect(normaliseMetaAd(META_RAW).cta).toBe('Shop Now')
   })
+
+  it('converts Unix seconds start_date to ISO date (not 1970)', () => {
+    const raw = { ...META_RAW, start_date: 1700000000 }
+    const r = normaliseMetaAd(raw)
+    expect(r.first_shown).not.toBeNull()
+    // 1700000000 seconds = 2023-11-14T22:13:20.000Z
+    expect(r.first_shown!.startsWith('2023')).toBe(true)
+  })
+
+  it('extracts thumbnail_url from snapshot.images', () => {
+    const raw = { ...META_RAW, snapshot: { images: ['https://example.com/snap.jpg'] } }
+    const r = normaliseMetaAd(raw)
+    expect(r.thumbnail_url).toBe('https://example.com/snap.jpg')
+  })
+
+  it('extracts video_url from snapshot.videos', () => {
+    const raw = {
+      ...META_RAW,
+      snapshot: { images: [], videos: [{ video_hd_url: 'https://example.com/hd.mp4' }] },
+    }
+    const r = normaliseMetaAd(raw)
+    expect(r.video_url).toBe('https://example.com/hd.mp4')
+    expect(r.media_type).toBe('video')
+  })
+
+  it('extracts body text from snapshot HTML', () => {
+    const raw = {
+      ad_id: '1',
+      snapshot: { body: { markup: { __html: '<div>Hello <b>world</b></div>' } } },
+    }
+    const r = normaliseMetaAd(raw)
+    expect(r.body_text).toBe('Hello world')
+  })
 })
 
 describe('normaliseGoogleAd', () => {

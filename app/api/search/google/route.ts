@@ -42,11 +42,26 @@ export async function POST(request: Request) {
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const advertisers: any[] = sData?.advertisers ?? sData?.data ?? sData?.results ?? []
+    const websites: any[] = sData?.websites ?? []
     const ql = query.toLowerCase()
+
+    // Build a set of advertiser_ids whose website contains the query as a domain keyword
+    const domainMatchIds = new Set(
+      websites
+        .filter((w: any) => w.website?.toLowerCase().includes(ql))
+        .map((w: any) => w.advertiser_id)
+    )
+
     const best =
+      // 1. Advertiser whose website domain matches the query
+      advertisers.find((a: any) => domainMatchIds.has(a.advertiser_id)) ??
+      // 2. US region + exact name match
+      advertisers.find((a: any) => a.region === 'US' && a.name?.toLowerCase() === ql) ??
+      // 3. US region + name contains query
       advertisers.find((a: any) => a.region === 'US' && a.name?.toLowerCase().includes(ql)) ??
+      // 4. First US result
       advertisers.find((a: any) => a.region === 'US') ??
-      advertisers.find((a: any) => a.name?.toLowerCase().includes(ql)) ??
+      // 5. First result
       advertisers[0]
     /* eslint-enable @typescript-eslint/no-explicit-any */
     const advId = best?.advertiser_id || best?.advertiserId || best?.id || null

@@ -42,16 +42,25 @@ export async function POST(request: Request) {
       if (!user) continue
       lookup = 'found'
       const resolvedHandle = user.uniqueId || handle
+      console.error('[search/tiktok] profile user:', user.uniqueId ?? 'not found')
+      console.error('[search/tiktok] profile itemList count:', Array.isArray(pData?.itemList) ? pData.itemList.length : 'none')
 
-      const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(resolvedHandle)}`, apiKey)
-      cr = vData.credits_remaining ?? cr
-      if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
+      // Profile endpoint may already include itemList — use it if present
+      let rawAds: Record<string, unknown>[] = []
+      const profileItems = Array.isArray(pData?.itemList) ? pData.itemList : []
+      if (profileItems.length > 0) {
+        rawAds = profileItems
+      } else {
+        // Fall back to dedicated videos endpoint
+        const { res: vRes, body: vData } = await sc(`https://api.scrapecreators.com/v3/tiktok/profile/videos?handle=${encodeURIComponent(resolvedHandle)}`, apiKey)
+        cr = vData.credits_remaining ?? cr
+        if (!vRes.ok) return NextResponse.json({ results: [], credits_used: 0, error: `SC returned ${vRes.status}: ${JSON.stringify(vData).slice(0, 200)}` }, { status: 502 })
 
-      console.error('[search/tiktok] videos keys:', Object.keys(vData))
-      console.error('[search/tiktok] videos count:', Array.isArray(vData?.itemList) ? vData.itemList.length : 'key missing')
-      // SC returns TikTok videos under body.itemList
-      const vids = ('itemList' in vData ? vData.itemList : null) ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
-      const rawAds: Record<string, unknown>[] = Array.isArray(vids) ? vids : []
+        console.error('[search/tiktok] videos keys:', Object.keys(vData))
+        console.error('[search/tiktok] videos count:', Array.isArray(vData?.itemList) ? vData.itemList.length : 'key missing')
+        const vids = ('itemList' in vData ? vData.itemList : null) ?? vData?.videos ?? vData?.data ?? vData?.results ?? (Array.isArray(vData) ? vData : [])
+        rawAds = Array.isArray(vids) ? vids : []
+      }
       if (rawAds.length === 0) continue
 
       const nickname = user?.nickname || resolvedHandle
