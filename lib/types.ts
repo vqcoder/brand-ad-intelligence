@@ -1,3 +1,5 @@
+import { SCORING_CONFIG, DEFAULT_SCORING } from '@/lib/constants'
+
 export type CreativeRecord = {
   platform: 'meta' | 'google' | 'tiktok' | 'youtube'
   platform_ad_id: string | null
@@ -59,9 +61,13 @@ export const SCORE_WEIGHTS: Record<keyof QualityScores, number> = {
   production: 1,
 }
 
-export function computeOverall(scores: QualityScores): number {
-  const keys = Object.keys(scores) as (keyof QualityScores)[]
-  const total = keys.reduce((sum, k) => sum + scores[k] * SCORE_WEIGHTS[k], 0)
-  const weightSum = keys.reduce((sum, k) => sum + SCORE_WEIGHTS[k], 0)
-  return Math.round((total / weightSum) * 10) / 10
+export function computeOverall(
+  scores: QualityScores,
+  platform: string = 'meta',
+): number {
+  const config = SCORING_CONFIG[platform] ?? DEFAULT_SCORING
+  const weighted = config.dimensions.reduce((sum: number, d) =>
+    sum + (((scores as Record<string, number>)[d.key] || 0) * d.weight), 0,
+  )
+  return parseFloat(weighted.toFixed(1))
 }

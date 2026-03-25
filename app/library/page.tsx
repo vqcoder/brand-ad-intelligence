@@ -4,9 +4,29 @@ import { useState, useEffect, useCallback } from 'react'
 import Nav from '../components/Nav'
 import { supabase } from '@/lib/supabase'
 import { QualityScores, computeOverall } from '@/lib/types'
+import { SCORING_CONFIG, DEFAULT_SCORING } from '@/lib/constants'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Creative = Record<string, any>
+
+function extractYouTubeId(url: string | null): string | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    return u.searchParams.get('v') ??
+      u.pathname.replace('/embed/', '').replace('/', '') ??
+      null
+  } catch { return null }
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '\u2014'
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    })
+  } catch { return '\u2014' }
+}
 
 function formatNumber(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -104,7 +124,7 @@ export default function LibraryPage() {
 
   const handleSaveScores = async () => {
     if (!selectedCreative) return
-    const overall = computeOverall(scores)
+    const overall = computeOverall(scores, selectedCreative.platform ?? 'meta')
     await supabase
       .from('creatives')
       .update({
@@ -135,12 +155,13 @@ export default function LibraryPage() {
     navigator.clipboard.writeText(text)
   }
 
-  const platforms = ['all', 'meta', 'google', 'tiktok'] as const
+  const platforms = ['all', 'meta', 'google', 'tiktok', 'youtube'] as const
   const platformLabels: Record<string, string> = {
     all: 'All',
     meta: 'Meta',
     google: 'Google',
     tiktok: 'TikTok',
+    youtube: 'YouTube',
   }
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -449,7 +470,7 @@ export default function LibraryPage() {
                     color: 'var(--text-3)',
                   }}
                 >
-                  <span>{c.first_shown ?? '—'}</span>
+                  <span>{formatDate(c.first_shown)}</span>
                   <span>
                     {c.view_count != null ? formatNumber(c.view_count) + ' views' : ''}
                   </span>
@@ -577,44 +598,59 @@ export default function LibraryPage() {
             </div>
 
             {/* 2. Media */}
-            <div
-              style={{
-                width: '100%',
-                aspectRatio: '16/9',
-                background: 'var(--bg)',
-                overflow: 'hidden',
-              }}
-            >
-              {selectedCreative.media_type === 'video' && selectedCreative.video_url ? (
-                <video
-                  src={selectedCreative.video_url}
-                  poster={selectedCreative.thumbnail_url ?? undefined}
-                  controls
-                  muted
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : selectedCreative.thumbnail_url || selectedCreative.media_url ? (
-                <img
-                  src={selectedCreative.thumbnail_url || selectedCreative.media_url}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
+            {(() => {
+              const isYouTube = selectedCreative.platform === 'youtube'
+              const youtubeId = isYouTube
+                ? extractYouTubeId(selectedCreative.destination_url ?? selectedCreative.video_url)
+                : null
+              return (
                 <div
                   style={{
                     width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-3)',
-                    fontSize: 36,
+                    aspectRatio: '16/9',
+                    background: 'var(--bg)',
+                    overflow: 'hidden',
                   }}
                 >
-                  ◻
+                  {isYouTube && youtubeId ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${youtubeId}`}
+                      style={{ width: '100%', height: '100%', border: 'none' }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : selectedCreative.media_type === 'video' && selectedCreative.video_url ? (
+                    <video
+                      src={selectedCreative.video_url}
+                      poster={selectedCreative.thumbnail_url ?? undefined}
+                      controls
+                      muted
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : selectedCreative.thumbnail_url || selectedCreative.media_url ? (
+                    <img
+                      src={selectedCreative.thumbnail_url || selectedCreative.media_url}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-3)',
+                        fontSize: 36,
+                      }}
+                    >
+                      ◻
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              )
+            })()}
 
             {/* 3. Copy section */}
             <div style={{ padding: '0 20px', marginTop: 16 }}>
@@ -653,11 +689,11 @@ export default function LibraryPage() {
               </div>
               <div>
                 <div style={labelStyle}>FIRST SEEN</div>
-                <div style={valueStyle}>{selectedCreative.first_shown || '—'}</div>
+                <div style={valueStyle}>{formatDate(selectedCreative.first_shown)}</div>
               </div>
               <div>
                 <div style={labelStyle}>LAST SEEN</div>
-                <div style={valueStyle}>{selectedCreative.last_shown || '—'}</div>
+                <div style={valueStyle}>{formatDate(selectedCreative.last_shown)}</div>
               </div>
               <div>
                 <div style={labelStyle}>RUNNING</div>
@@ -798,149 +834,151 @@ export default function LibraryPage() {
             </div>
 
             {/* 8. Quality Score */}
-            <div style={{ padding: '0 20px', marginTop: 24 }}>
-              <div style={sectionHeader('')}>
-                ── QUALITY SCORE ─────────
-              </div>
-              {(
-                [
-                  { key: 'hook' as const, label: 'Hook' },
-                  { key: 'brand_fit' as const, label: 'Brand Fit' },
-                  { key: 'audience' as const, label: 'Audience' },
-                  { key: 'message' as const, label: 'Message' },
-                  { key: 'format_fit' as const, label: 'Format Fit' },
-                  { key: 'production' as const, label: 'Production' },
-                ] as const
-              ).map((dim) => (
-                <div key={dim.key} style={{ marginBottom: 12 }}>
+            {(() => {
+              const platform = selectedCreative.platform ?? 'meta'
+              const config = SCORING_CONFIG[platform] ?? DEFAULT_SCORING
+              const dims = config.dimensions.filter((d) => d.weight > 0)
+              const scoresMap = scores as Record<string, number>
+              return (
+                <div style={{ padding: '0 20px', marginTop: 24 }}>
+                  <div style={sectionHeader('')}>
+                    ── QUALITY SCORE ─────────
+                  </div>
+                  {dims.map((dim) => (
+                    <div key={dim.key} style={{ marginBottom: 12 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: '"DM Sans", sans-serif',
+                            fontSize: 13,
+                            color: 'var(--text-2)',
+                            width: 80,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {dim.label}
+                        </span>
+                        <div
+                          style={{
+                            width: 120,
+                            height: 8,
+                            borderRadius: 4,
+                            background: 'var(--border)',
+                            flexShrink: 0,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${((scoresMap[dim.key] || 0) / 10) * 100}%`,
+                              height: '100%',
+                              background: 'var(--accent)',
+                              borderRadius: 4,
+                              transition: 'width 0.15s ease',
+                            }}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            fontFamily: '"JetBrains Mono", monospace',
+                            fontSize: 13,
+                            color: 'var(--text-1)',
+                            width: 24,
+                            textAlign: 'right',
+                          }}
+                        >
+                          {scoresMap[dim.key] || 0}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, marginLeft: 0 }}>
+                        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                          <button
+                            key={n}
+                            onClick={() =>
+                              setScores((prev) => ({ ...prev, [dim.key]: n }))
+                            }
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 4,
+                              fontFamily: '"JetBrains Mono", monospace',
+                              fontSize: 11,
+                              background:
+                                scoresMap[dim.key] === n
+                                  ? 'var(--accent)'
+                                  : 'transparent',
+                              color:
+                                scoresMap[dim.key] === n
+                                  ? 'var(--bg)'
+                                  : 'var(--text-3)',
+                              border:
+                                scoresMap[dim.key] === n
+                                  ? 'none'
+                                  : '1px solid var(--border)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: 0,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, fontFamily: '"DM Sans", sans-serif' }}>
+                        {dim.guidance}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Divider */}
+                  <div
+                    style={{
+                      borderTop: '1px solid var(--border)',
+                      margin: '12px 0',
+                    }}
+                  />
+
+                  {/* Overall score */}
                   <div
                     style={{
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: 10,
-                      marginBottom: 6,
                     }}
                   >
                     <span
                       style={{
                         fontFamily: '"DM Sans", sans-serif',
-                        fontSize: 13,
+                        fontSize: 14,
                         color: 'var(--text-2)',
-                        width: 80,
-                        flexShrink: 0,
                       }}
                     >
-                      {dim.label}
+                      Overall
                     </span>
-                    <div
-                      style={{
-                        width: 120,
-                        height: 8,
-                        borderRadius: 4,
-                        background: 'var(--border)',
-                        flexShrink: 0,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${(scores[dim.key] / 10) * 100}%`,
-                          height: '100%',
-                          background: 'var(--accent)',
-                          borderRadius: 4,
-                          transition: 'width 0.15s ease',
-                        }}
-                      />
-                    </div>
                     <span
                       style={{
                         fontFamily: '"JetBrains Mono", monospace',
-                        fontSize: 13,
-                        color: 'var(--text-1)',
-                        width: 24,
-                        textAlign: 'right',
+                        fontSize: 18,
+                        color: 'var(--accent)',
+                        fontWeight: 700,
                       }}
                     >
-                      {scores[dim.key]}
+                      {computeOverall(scores, platform)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: 4, marginLeft: 0 }}>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                      <button
-                        key={n}
-                        onClick={() =>
-                          setScores((prev) => ({ ...prev, [dim.key]: n }))
-                        }
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 4,
-                          fontFamily: '"JetBrains Mono", monospace',
-                          fontSize: 11,
-                          background:
-                            scores[dim.key] === n
-                              ? 'var(--accent)'
-                              : 'transparent',
-                          color:
-                            scores[dim.key] === n
-                              ? 'var(--bg)'
-                              : 'var(--text-3)',
-                          border:
-                            scores[dim.key] === n
-                              ? 'none'
-                              : '1px solid var(--border)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
                 </div>
-              ))}
-
-              {/* Divider */}
-              <div
-                style={{
-                  borderTop: '1px solid var(--border)',
-                  margin: '12px 0',
-                }}
-              />
-
-              {/* Overall score */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: '"DM Sans", sans-serif',
-                    fontSize: 14,
-                    color: 'var(--text-2)',
-                  }}
-                >
-                  Overall
-                </span>
-                <span
-                  style={{
-                    fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: 18,
-                    color: 'var(--accent)',
-                    fontWeight: 700,
-                  }}
-                >
-                  {computeOverall(scores)}
-                </span>
-              </div>
-            </div>
+              )
+            })()}
 
             {/* 9. Notes */}
             <div style={{ padding: '0 20px', marginTop: 24, marginBottom: 24 }}>
