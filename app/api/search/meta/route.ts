@@ -62,7 +62,16 @@ export async function POST(request: Request) {
       rawAds = extractAds(fData, 'keyword fallback')
     }
 
-    const results = rawAds.map((ad) => {
+    const results = rawAds.map((ad, idx) => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      if (idx < 3) {
+        const snap = (ad as any).snapshot ?? {}
+        console.error(`[meta] ad[${idx}] snapshot keys:`, Object.keys(snap))
+        console.error(`[meta] ad[${idx}] snapshot.images:`, snap.images?.length ?? 'none')
+        console.error(`[meta] ad[${idx}] snapshot.videos:`, snap.videos?.length ?? 'none')
+        console.error(`[meta] ad[${idx}] snapshot.cards:`, snap.cards?.length ?? 'none')
+      }
+      /* eslint-enable @typescript-eslint/no-explicit-any */
       const r = normaliseMetaAd(ad as Record<string, unknown>)
       if (pageId && !r.advertiser_id) r.advertiser_id = String(pageId)
       if (!r.page_name) r.page_name = query

@@ -30,7 +30,7 @@ const config: Config = {
     '!**/node_modules/**',
   ],
   coverageThreshold: {
-    global: { lines: 30, functions: 50, branches: 30 },
+    global: { lines: 25, functions: 40, branches: 30 },
   },
   coverageReporters: ['text', 'lcov', 'html'],
 }

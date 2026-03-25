@@ -41,9 +41,10 @@ const PLATFORM_CFG: Record<string, { icon: string; label: string; bg: string }> 
   meta: { icon: '\u25C8', label: 'Meta', bg: 'rgba(59,89,152,0.8)' },
   google: { icon: '\u25C9', label: 'Google', bg: 'rgba(66,133,244,0.8)' },
   tiktok: { icon: '\u266A', label: 'TikTok', bg: 'rgba(238,29,82,0.8)' },
+  youtube: { icon: '\u25B6', label: 'YouTube', bg: 'rgba(255,0,0,0.8)' },
 }
 
-const FALLBACK_ICONS: Record<string, string> = { meta: '\u25C8', google: '\u25C9', tiktok: '\u266A' }
+const FALLBACK_ICONS: Record<string, string> = { meta: '\u25C8', google: '\u25C9', tiktok: '\u266A', youtube: '\u25B6' }
 
 /* ─── CreativeCard ─── */
 function CreativeCard({
@@ -249,8 +250,9 @@ function SearchContent() {
   const [metaStatus, setMetaStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
   const [googleStatus, setGoogleStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
   const [tiktokStatus, setTiktokStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
+  const [youtubeStatus, setYoutubeStatus] = useState<PlatformStatus>({ status: 'idle', results: [], count: 0 })
 
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google' | 'tiktok'>('all')
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google' | 'tiktok' | 'youtube'>('all')
   const [sortBy, setSortBy] = useState<'recent' | 'active' | 'views'>('recent')
   const [textFilter, setTextFilter] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -270,7 +272,7 @@ function SearchContent() {
     if (!q) return
 
     const fetchPlatform = async (
-      platform: 'meta' | 'google' | 'tiktok',
+      platform: 'meta' | 'google' | 'tiktok' | 'youtube',
       setter: React.Dispatch<React.SetStateAction<PlatformStatus>>,
     ) => {
       setter({ status: 'loading', results: [], count: 0 })
@@ -292,10 +294,11 @@ function SearchContent() {
     fetchPlatform('meta', setMetaStatus)
     fetchPlatform('google', setGoogleStatus)
     fetchPlatform('tiktok', setTiktokStatus)
+    fetchPlatform('youtube', setYoutubeStatus)
   }, [q, domain, context])
 
   // Merged + filtered + sorted creatives
-  const allCreatives: CreativeRecord[] = [...metaStatus.results, ...googleStatus.results, ...tiktokStatus.results]
+  const allCreatives: CreativeRecord[] = [...metaStatus.results, ...googleStatus.results, ...tiktokStatus.results, ...youtubeStatus.results]
 
   let filtered = platformFilter === 'all' ? allCreatives : allCreatives.filter((c) => c.platform === platformFilter)
 
@@ -354,17 +357,19 @@ function SearchContent() {
     return ''
   }
 
-  const platformTabs: { key: 'all' | 'meta' | 'google' | 'tiktok'; label: string }[] = [
+  const platformTabs: { key: 'all' | 'meta' | 'google' | 'tiktok' | 'youtube'; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'meta', label: 'Meta' },
     { key: 'google', label: 'Google' },
     { key: 'tiktok', label: 'TikTok' },
+    { key: 'youtube', label: 'YouTube' },
   ]
 
   const platformStatuses: { name: string; ps: PlatformStatus }[] = [
     { name: 'Meta', ps: metaStatus },
     { name: 'Google', ps: googleStatus },
     { name: 'TikTok', ps: tiktokStatus },
+    { name: 'YouTube', ps: youtubeStatus },
   ]
 
   return (

@@ -107,7 +107,7 @@ export default function Home() {
               marginBottom: 32,
             }}
           >
-            Search any brand across Meta, Google &amp; TikTok
+            Search any brand across Meta, Google, TikTok &amp; YouTube
           </p>
 
           {/* Search input */}
@@ -243,7 +243,7 @@ export default function Home() {
               justifyContent: 'center',
             }}
           >
-            {['◈ Meta', '◉ Google', '♪ TikTok'].map((label) => (
+            {['◈ Meta', '◉ Google', '♪ TikTok', '▶ YouTube'].map((label) => (
               <span
                 key={label}
                 style={{

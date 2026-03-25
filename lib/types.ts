@@ -1,5 +1,5 @@
 export type CreativeRecord = {
-  platform: 'meta' | 'google' | 'tiktok'
+  platform: 'meta' | 'google' | 'tiktok' | 'youtube'
   platform_ad_id: string | null
   title: string | null
   body_text: string | null

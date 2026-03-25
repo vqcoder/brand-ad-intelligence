@@ -61,19 +61,35 @@ export function normaliseMetaAd(raw: Record<string, unknown>): CreativeRecord {
     computeDaysRunning(firstShown, lastShown)
 
   // Extract media from snapshot structure (SC Meta response)
-  const snap = ad.snapshot as RawData | undefined
-  const snapImages: string[] = snap?.images ?? []
-  const snapVideos: RawData[] = snap?.videos ?? []
-  const snapHtml: string = snap?.body?.markup?.__html ?? ''
+  const snap = (ad.snapshot ?? {}) as RawData
+  const snapHtml: string = snap.body?.markup?.__html ?? ''
   const snapBodyText = snapHtml.replace(/<[^>]*>/g, '').trim() || null
 
-  const thumbnailUrl = snapImages[0] ?? snapVideos[0]?.video_preview_image_url ??
+  // Variant 1: direct images/videos arrays
+  const snapImages: string[] = snap.images ?? []
+  const snapVideos: RawData[] = snap.videos ?? []
+
+  // Variant 2: cards array (carousel ads)
+  const cards: RawData[] = snap.cards ?? []
+  const cardImages: string[] = cards.map((c: RawData) => c.original_image_url ?? c.image_url).filter(Boolean)
+  const cardVideos: string[] = cards.map((c: RawData) => c.video_hd_url ?? c.video_sd_url).filter(Boolean)
+
+  // Variant 3: resizable_image (single image ads)
+  const resizableImage: string | null = snap.resizable_image?.uri ?? null
+
+  // Merge all sources
+  const allImages: string[] = [...snapImages, ...cardImages, ...(resizableImage ? [resizableImage] : [])].filter(Boolean)
+  const allVideoUrls: string[] = [
+    ...snapVideos.map((v: RawData) => v.video_hd_url ?? v.video_sd_url ?? null),
+    ...cardVideos,
+  ].filter(Boolean) as string[]
+
+  const thumbnailUrl = allImages[0] ?? snapVideos[0]?.video_preview_image_url ?? snap.thumbnail_url ??
     (ad.thumbnail_url || ad.image_url || null)
-  const mediaUrl = snapImages[0] ?? (ad.image_url || ad.media_url || null)
-  const videoUrl = snapVideos[0]?.video_hd_url ?? snapVideos[0]?.video_sd_url ??
-    (ad.video_url || ad.video_sd_url || ad.video_hd_url || null)
+  const mediaUrl = allImages[0] ?? (ad.image_url || ad.media_url || null)
+  const videoUrl = allVideoUrls[0] ?? (ad.video_url || ad.video_sd_url || ad.video_hd_url || null)
   const mediaType = ad.media_type ||
-    (snapVideos.length > 0 ? 'video' : snapImages.length > 0 ? 'image' :
+    (allVideoUrls.length > 0 ? 'video' : allImages.length > 0 ? 'image' :
     (ad.video_url ? 'video' : ad.image_url ? 'image' : null))
 
   return {
@@ -151,45 +167,90 @@ export function normaliseGoogleAd(raw: Record<string, unknown>): CreativeRecord 
   }
 }
 
-export function normaliseTikTokVideo(raw: Record<string, unknown>): CreativeRecord {
+export function normaliseYouTubeVideo(raw: Record<string, unknown>): CreativeRecord {
   const v = raw as RawData
-  const desc = (v.desc || v.description || v.title || null) as string | null
-  const createTime = v.createTime || v.create_time
-  let firstShown: string | null = v.created_at || null
-  if (createTime && typeof createTime === 'number' && isFinite(createTime)) {
-    firstShown = new Date(createTime * 1000).toISOString()
-  }
+  const desc = (v.description || v.desc || '') as string
+  const truncatedDesc = desc.length > 500 ? desc.slice(0, 500) + '...' : desc || null
 
   return {
-    platform: 'tiktok',
-    platform_ad_id: v.id || v.video_id || null,
-    title: v.title || v.desc || null,
-    body_text: desc,
+    platform: 'youtube',
+    platform_ad_id: v.videoId || v.video_id || v.id || null,
+    title: v.title || null,
+    body_text: truncatedDesc,
     cta: null,
     format: 'video',
     media_type: 'video',
-    media_url: v.video?.cover || v.cover || v.thumbnail_url || null,
-    thumbnail_url: v.video?.cover || v.cover || v.thumbnail_url || v.origin_cover || null,
-    video_url: v.video?.playAddr || v.play || v.video_url || v.download_url || null,
-    destination_url: v.share_url || null,
-    page_name: v.author?.nickname || null,
-    first_shown: firstShown,
+    media_url: v.thumbnail || v.thumbnailUrl || v.thumbnail_url || null,
+    thumbnail_url: v.thumbnail || v.thumbnailUrl || v.thumbnail_url || null,
+    video_url: v.videoUrl || v.video_url || v.url || null,
+    destination_url: v.videoUrl || v.video_url || v.url || null,
+    page_name: v.channelName || v.channel_name || v.channelTitle || v.author || null,
+    first_shown: toISO(v.publishedAt || v.published_at || v.uploadDate || v.upload_date) || null,
     last_shown: null,
     is_active: true,
     days_running: null,
     regions: [],
-    advertiser_id: v.author?.id || null,
-    creative_id: v.id || v.video_id || null,
-    headline: v.title || v.desc || null,
-    description: v.desc || null,
-    view_count: v.play_count || v.stats?.playCount || null,
-    like_count: v.digg_count || v.stats?.diggCount || null,
-    comment_count: v.comment_count || v.stats?.commentCount || null,
-    share_count: v.share_count || v.stats?.shareCount || null,
+    advertiser_id: v.channelId || v.channel_id || null,
+    creative_id: v.videoId || v.video_id || v.id || null,
+    headline: v.title || null,
+    description: truncatedDesc,
+    view_count: v.viewCount || v.view_count || v.views || null,
+    like_count: v.likeCount || v.like_count || v.likes || null,
+    comment_count: v.commentCount || v.comment_count || v.comments || null,
+    share_count: null,
+    hashtags: extractHashtags(desc),
+    duration_seconds: v.duration || v.lengthSeconds || v.length_seconds || null,
+    author_handle: v.channelHandle || v.channel_handle || v.channelId || null,
+    ad_library_url: null,
+    raw_data: raw,
+    auto_synced: false,
+  }
+}
+
+export function normaliseTikTokVideo(raw: Record<string, unknown>): CreativeRecord {
+  const v = raw as RawData
+  const desc = (v.desc || v.description || v.title || v.ad_text || null) as string | null
+  const createTime = v.createTime || v.create_time
+  let firstShown: string | null = toISO(v.first_shown || v.created_at) || null
+  if (!firstShown && createTime && typeof createTime === 'number' && isFinite(createTime)) {
+    firstShown = new Date(createTime * 1000).toISOString()
+  }
+
+  // Ad library fields use advertiser/advertiser_name; profile uses author.nickname
+  const advertiserName = v.advertiser_name || v.advertiser || v.author?.nickname || null
+  const advertiserHandle = v.advertiser_handle || v.author?.unique_id || v.author?.uniqueId || null
+  const advertiserId = v.advertiser_id || v.author?.id || null
+
+  return {
+    platform: 'tiktok',
+    platform_ad_id: v.ad_id || v.id || v.video_id || null,
+    title: v.title || v.desc || v.ad_title || null,
+    body_text: desc,
+    cta: v.cta || v.call_to_action || null,
+    format: 'video',
+    media_type: 'video',
+    media_url: v.coverUrl || v.cover_url || v.video?.cover || v.cover || v.thumbnail_url || null,
+    thumbnail_url: v.coverUrl || v.cover_url || v.video?.cover || v.cover || v.thumbnail_url || v.origin_cover || null,
+    video_url: v.videoUrl || v.video_url || v.video?.playAddr || v.playAddr || v.play || v.download_url || null,
+    destination_url: v.landing_page_url || v.destination_url || v.share_url || null,
+    page_name: advertiserName,
+    first_shown: firstShown,
+    last_shown: toISO(v.last_shown) || null,
+    is_active: v.is_active ?? true,
+    days_running: v.days_running || null,
+    regions: v.regions || v.countries || [],
+    advertiser_id: advertiserId,
+    creative_id: v.creative_id || v.id || v.video_id || null,
+    headline: v.title || v.desc || v.ad_title || null,
+    description: v.desc || v.description || null,
+    view_count: v.impressions || v.play_count || v.stats?.playCount || null,
+    like_count: v.likes || v.digg_count || v.stats?.diggCount || null,
+    comment_count: v.comments || v.comment_count || v.stats?.commentCount || null,
+    share_count: v.shares || v.share_count || v.stats?.shareCount || null,
     hashtags: extractHashtags(desc),
     duration_seconds: v.video?.duration || v.duration || null,
-    author_handle: v.author?.unique_id || v.author?.uniqueId || null,
-    ad_library_url: null,
+    author_handle: advertiserHandle,
+    ad_library_url: v.ad_url || v.ad_library_url || null,
     raw_data: raw,
     auto_synced: false,
   }
